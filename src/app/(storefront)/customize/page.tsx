@@ -34,12 +34,10 @@ export default function CustomizePage() {
       </div>
       <ol className="mt-20 grid gap-6 md:grid-cols-3">
         {STEPS.map((s, i) => (
-          <Reveal key={s.n} delay={i * 0.1}>
-            <li className="rounded-md border border-border bg-surface p-6">
-              <span className="font-display text-4xl text-brand">{s.n}</span>
-              <p className="mt-2 font-display text-2xl uppercase">{s.title}</p>
-              <p className="mt-1 text-text-muted">{s.body}</p>
-            </li>
+          <Reveal key={s.n} as="li" delay={i * 0.1} className="rounded-md border border-border bg-surface p-6">
+            <span className="font-display text-4xl text-brand">{s.n}</span>
+            <p className="mt-2 font-display text-2xl uppercase">{s.title}</p>
+            <p className="mt-1 text-text-muted">{s.body}</p>
           </Reveal>
         ))}
       </ol>
