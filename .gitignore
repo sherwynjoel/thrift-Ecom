@@ -10,3 +10,6 @@ build/
 Thumbs.db
 .vscode/
 .idea/
+
+# Superpowers SDD scratch
+.superpowers/
