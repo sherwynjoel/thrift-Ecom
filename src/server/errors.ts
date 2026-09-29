@@ -58,6 +58,14 @@ export class PaymentError extends DomainError {
   }
 }
 
+export interface StockIssue { variantId: string; name: string; requested: number; available: number }
+
+export class StockChangedError extends DomainError {
+  constructor(public readonly issues: StockIssue[]) {
+    super("STOCK_CHANGED", "Some items just sold out or ran low, so we updated your bag. Please review it and try again.", 409, { issues });
+  }
+}
+
 export type ErrorBody = {
   error: { code: string; message: string; details?: unknown };
 };
