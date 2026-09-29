@@ -21,4 +21,11 @@ describe("LocalDiskStorage", () => {
     const s = new LocalDiskStorage(root);
     await expect(s.put("../evil.png", new Uint8Array([1]), "image/png")).rejects.toThrow();
   });
+
+  it("refuses empty or root keys", async () => {
+    const root = mkdtempSync(join(tmpdir(), "store-"));
+    const s = new LocalDiskStorage(root);
+    await expect(s.put("", new Uint8Array([1]), "image/png")).rejects.toThrow();
+    await expect(s.put(".", new Uint8Array([1]), "image/png")).rejects.toThrow();
+  });
 });

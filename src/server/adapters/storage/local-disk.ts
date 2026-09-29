@@ -8,7 +8,7 @@ export class LocalDiskStorage implements StorageAdapter {
   private resolveKey(key: string): string {
     const root = resolve(this.rootDir);
     const full = resolve(root, key);
-    if (full !== root && !full.startsWith(root + sep)) throw new Error("Invalid storage key");
+    if (full === root || !full.startsWith(root + sep)) throw new Error("Invalid storage key");
     return full;
   }
 
