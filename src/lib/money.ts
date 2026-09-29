@@ -6,7 +6,7 @@ const inr = new Intl.NumberFormat("en-IN", {
 });
 
 export function formatPaise(paise: number): string {
-  return inr.format(Math.round(paise / 100)).replace(/ /g, "");
+  return inr.format(Math.round(paise / 100)).replace(/[\s  ]/g, "");
 }
 
 export function discountPercent(pricePaise: number, compareAtPaise: number | null | undefined): number | null {
