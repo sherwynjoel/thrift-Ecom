@@ -54,10 +54,21 @@ export function productFormFromProduct(p: ProductLike): ProductFormState {
  * (the server-loaded variants) that aren't currently in `state.rows`. This lets a size or color that was
  * toggled off and back on in the same session recover its variant id, stock, and price override instead of
  * being treated as a brand-new row.
+ *
+ * A recovered row's price-override *text* is dropped along with it: any edit made before the row was removed
+ * is discarded (matching stock, which also reverts to the server value), so the recovered row's displayed
+ * text falls back to `paiseToRupees(pricePaise)` and agrees with what `toProductInput` will save. Only rows
+ * that stayed in `state.rows` the whole time keep their existing text entry.
  */
-export function rebuildRows(state: ProductFormState, sizes: string[], colors: ColorSpec[]): VariantRow[] {
-  const recovered = state.originalRows.filter((o) => !state.rows.some((r) => r.key === o.key));
-  return buildVariantRows(sizes, colors, [...state.rows, ...recovered]);
+export function rebuildRows(state: ProductFormState, sizes: string[], colors: ColorSpec[]): { rows: VariantRow[]; priceTexts: Record<string, string> } {
+  const activeKeys = new Set(state.rows.map((r) => r.key));
+  const recovered = state.originalRows.filter((o) => !activeKeys.has(o.key));
+  const rows = buildVariantRows(sizes, colors, [...state.rows, ...recovered]);
+  const rowKeys = new Set(rows.map((r) => r.key));
+  const priceTexts = Object.fromEntries(
+    Object.entries(state.priceTexts).filter(([key]) => activeKeys.has(key) && rowKeys.has(key)),
+  );
+  return { rows, priceTexts };
 }
 
 export function toProductInput(s: ProductFormState): { input: ProductInput | null; errors: Record<string, string[]> } {
@@ -83,14 +94,21 @@ export function toProductInput(s: ProductFormState): { input: ProductInput | nul
       name: s.name, slug: s.slug.trim(), description: s.description, fit: s.fit, fabric: s.fabric,
       basePricePaise: base!, compareAtPricePaise: compareAt, status: s.status, isCustomizable: s.isCustomizable,
       collectionIds: s.collectionIds,
-      variants: s.rows.map((r) => ({
-        ...(r.id ? { id: r.id } : {}),
-        size: r.size as ProductInput["variants"][number]["size"],
-        colorName: r.colorName,
-        colorHex: r.colorHex,
-        pricePaise: r.pricePaise,
-        stock: r.stock,
-      })),
+      variants: s.rows.map((r) => {
+        const text = s.priceTexts[r.key];
+        // priceTexts is the source of truth for a row's override: when the admin has a text entry for this
+        // row (even ""), save exactly what it parses to; only fall back to the row's own pricePaise when
+        // there's no text entry at all (e.g. a row recovered from originalRows after rebuildRows pruned it).
+        const pricePaise = text !== undefined ? (text.trim() ? rupeesToPaise(text) : null) : r.pricePaise;
+        return {
+          ...(r.id ? { id: r.id } : {}),
+          size: r.size as ProductInput["variants"][number]["size"],
+          colorName: r.colorName,
+          colorHex: r.colorHex,
+          pricePaise,
+          stock: r.stock,
+        };
+      }),
     },
   };
 }

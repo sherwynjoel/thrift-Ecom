@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { paiseToRupees } from "@/lib/money";
 import { emptyProductForm, productFormFromProduct, rebuildRows, toProductInput } from "@/lib/product-form";
 
 describe("product form helper", () => {
@@ -57,11 +58,57 @@ describe("product form helper", () => {
       ],
     });
     const withoutS = rebuildRows(s, ["M"], s.colors);
-    expect(withoutS.map((r) => r.key)).toEqual(["M|black"]);
+    expect(withoutS.rows.map((r) => r.key)).toEqual(["M|black"]);
 
-    const s2 = { ...s, sizes: ["M"], rows: withoutS };
+    const s2 = { ...s, sizes: ["M"], rows: withoutS.rows, priceTexts: withoutS.priceTexts };
     const restored = rebuildRows(s2, ["S", "M"], s2.colors);
-    const sRow = restored.find((r) => r.key === "S|black");
+    const sRow = restored.rows.find((r) => r.key === "S|black");
     expect(sRow).toMatchObject({ id: "vS", stock: 4, pricePaise: 45000 });
+  });
+
+  it("keeps the displayed price and the saved price in sync after a size is toggled off and back on", () => {
+    const s = productFormFromProduct({
+      name: "Tee", slug: "tee", description: "", fit: "REGULAR", fabric: "Cotton", basePricePaise: 59900, compareAtPricePaise: null,
+      status: "DRAFT", isCustomizable: false, collectionIds: [],
+      variants: [
+        { id: "vS", size: "S", colorName: "Black", colorHex: "#111111", pricePaise: 45000, stock: 4 },
+        { id: "vM", size: "M", colorName: "Black", colorHex: "#111111", pricePaise: null, stock: 9 },
+      ],
+    });
+    // Simulate typing "700" into the S row's price override, without saving.
+    const edited = {
+      ...s,
+      priceTexts: { ...s.priceTexts, "S|black": "700" },
+      rows: s.rows.map((r) => (r.key === "S|black" ? { ...r, pricePaise: 70000 } : r)),
+    };
+
+    const withoutS = rebuildRows(edited, ["M"], edited.colors);
+    const s2 = { ...edited, sizes: ["M"], rows: withoutS.rows, priceTexts: withoutS.priceTexts };
+    const restored = rebuildRows(s2, ["S", "M"], s2.colors);
+
+    const sRow = restored.rows.find((r) => r.key === "S|black")!;
+    const displayedText = restored.priceTexts["S|black"] ?? paiseToRupees(sRow.pricePaise);
+
+    const finalState = { ...s, sizes: ["S", "M"], rows: restored.rows, priceTexts: restored.priceTexts };
+    const saved = toProductInput(finalState).input;
+    const savedPrice = saved!.variants.find((v) => v.size === "S")!.pricePaise;
+
+    expect(displayedText).toBe("450");
+    expect(savedPrice).toBe(45000);
+  });
+
+  it("saves a newly typed price override without toggling anything", () => {
+    const s = productFormFromProduct({
+      name: "Tee", slug: "tee", description: "", fit: "REGULAR", fabric: "Cotton", basePricePaise: 59900, compareAtPricePaise: null,
+      status: "DRAFT", isCustomizable: false, collectionIds: [],
+      variants: [{ id: "vS", size: "S", colorName: "Black", colorHex: "#111111", pricePaise: 45000, stock: 4 }],
+    });
+    const edited = {
+      ...s,
+      priceTexts: { ...s.priceTexts, "S|black": "700" },
+      rows: s.rows.map((r) => (r.key === "S|black" ? { ...r, pricePaise: 70000 } : r)),
+    };
+    const { input } = toProductInput(edited);
+    expect(input!.variants.find((v) => v.size === "S")!.pricePaise).toBe(70000);
   });
 });

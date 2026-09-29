@@ -12,7 +12,10 @@ import { cn } from "@/lib/utils";
 export function VariantMatrix({ state, onChange, inCarts }: { state: ProductFormState; onChange: (next: ProductFormState) => void; inCarts: Record<string, number> }) {
   const [fill, setFill] = useState("");
 
-  const withMatrix = (sizes: string[], colors: ColorSpec[]) => onChange({ ...state, sizes, colors, rows: rebuildRows(state, sizes, colors) });
+  const withMatrix = (sizes: string[], colors: ColorSpec[]) => {
+    const { rows, priceTexts } = rebuildRows(state, sizes, colors);
+    onChange({ ...state, sizes, colors, rows, priceTexts });
+  };
   const toggleSize = (size: string) => withMatrix(state.sizes.includes(size) ? state.sizes.filter((s) => s !== size) : [...state.sizes, size], state.colors);
   const setColor = (i: number, patch: Partial<ColorSpec>) => withMatrix(state.sizes, state.colors.map((c, j) => (j === i ? { ...c, ...patch } : c)));
   const addColor = () => withMatrix(state.sizes, [...state.colors, { name: "", hex: "#ffffff" }]);
