@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { handle, ok, parseJson, resolveApiCartRef, withCartToken } from "@/server/api";
+import { cartHandle, ok, parseJson } from "@/server/api";
 import { addItem, MAX_QTY_PER_LINE } from "@/server/services/cart";
 
 const addSchema = z.object({
@@ -7,8 +7,7 @@ const addSchema = z.object({
   quantity: z.number().int().min(1).max(MAX_QTY_PER_LINE).optional(),
 });
 
-export const POST = handle(async (req) => {
+export const POST = cartHandle(async (req, _ctx, { ref }) => {
   const body = await parseJson(req, addSchema);
-  const { ref, newGuestToken } = await resolveApiCartRef(req);
-  return withCartToken(ok(await addItem(ref, body.variantId, body.quantity ?? 1)), newGuestToken);
+  return ok(await addItem(ref, body.variantId, body.quantity ?? 1));
 });

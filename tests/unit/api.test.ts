@@ -51,6 +51,11 @@ describe("/api/v1", () => {
 
   it("runs a guest cart through add, update, delete using X-Cart-Token", async () => {
     const p = await createProduct({ name: "Cart Tee", variants: [{ size: "M", colorName: "Black", stock: 3 }] });
+
+    const failed = await addCartItem(req("/api/v1/cart/items", json({ variantId: "does-not-exist", quantity: 1 })), params({}));
+    expect(failed.status).toBe(404);
+    expect(failed.headers.get("X-Cart-Token")).toBeTruthy();
+
     const first = await addCartItem(req("/api/v1/cart/items", json({ variantId: p.variants[0].id, quantity: 1 })), params({}));
     expect(first.status).toBe(200);
     const token = first.headers.get("X-Cart-Token");

@@ -25,6 +25,20 @@ export function handle(fn: (req: NextRequest, ctx: RouteCtx) => Promise<Response
   };
 }
 
+export function cartHandle(
+  fn: (req: NextRequest, ctx: RouteCtx, cart: { ref: CartRef }) => Promise<Response>,
+) {
+  return async (req: NextRequest, ctx: RouteCtx): Promise<Response> => {
+    const { ref, newGuestToken } = await resolveApiCartRef(req);
+    try {
+      return withCartToken(await fn(req, ctx, { ref }), newGuestToken);
+    } catch (err) {
+      const { status, body } = toHttp(err);
+      return withCartToken(NextResponse.json(body, { status }), newGuestToken);
+    }
+  };
+}
+
 export async function parseJson<T>(req: NextRequest, schema: ZodType<T>): Promise<T> {
   let raw: unknown;
   try {
