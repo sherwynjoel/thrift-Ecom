@@ -71,6 +71,19 @@ async function syncVariants(tx: Tx, productId: string, slug: string, variants: P
   }
   if (removed.length) await tx.productVariant.deleteMany({ where: { id: { in: removed.map((v) => v.id) } } });
 
+  // Park variants whose (size, colorName) is changing under a unique placeholder colorName first, so that
+  // swapping two existing variants (e.g. M/Black <-> L/Black) never hits the @@unique([productId, size, colorName])
+  // constraint against a sibling row that hasn't been updated to its final value yet.
+  const currentById = new Map(current.map((v) => [v.id, v]));
+  for (const v of variants) {
+    if (!v.id) continue;
+    const prev = currentById.get(v.id);
+    if (!prev) continue;
+    if (prev.size !== v.size || prev.colorName !== v.colorName.trim()) {
+      await tx.productVariant.update({ where: { id: v.id }, data: { colorName: `__moving__${v.id}` } });
+    }
+  }
+
   for (const [i, v] of variants.entries()) {
     const data = { size: v.size, colorName: v.colorName.trim(), colorHex: v.colorHex, pricePaise: v.pricePaise, stock: v.stock, sortOrder: i };
     if (v.id) {

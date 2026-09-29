@@ -113,4 +113,34 @@ describe("admin products service", () => {
     await deleteProduct(id);
     await expect(getAdminProduct(id)).rejects.toBeInstanceOf(NotFoundError);
   });
+
+  it("swaps two existing variants' size and color in one save", async () => {
+    const { id } = await adminCreate(input());
+    const before = await getAdminProduct(id);
+    const m = before.variants.find((v) => v.size === "M")!;
+    const l = before.variants.find((v) => v.size === "L")!;
+    await updateProduct(id, input({
+      variants: [
+        { id: m.id, size: "L", colorName: "Black", colorHex: "#111111", pricePaise: null, stock: 9 },
+        { id: l.id, size: "M", colorName: "Black", colorHex: "#111111", pricePaise: 74900, stock: 1 },
+      ],
+    }));
+    const after = await getAdminProduct(id);
+    const newM = after.variants.find((v) => v.id === m.id)!;
+    const newL = after.variants.find((v) => v.id === l.id)!;
+    expect(newM.size).toBe("L");
+    expect(newM.stock).toBe(9);
+    expect(newM.sku).toBe(m.sku);
+    expect(newL.size).toBe("M");
+    expect(newL.stock).toBe(1);
+    expect(newL.sku).toBe(l.sku);
+  });
+
+  it("keeps its own slug unchanged when resaving with the same slug", async () => {
+    const { id, slug } = await adminCreate(input());
+    expect(slug).toBe("midnight-tee");
+    await updateProduct(id, input({ slug }));
+    const after = await getAdminProduct(id);
+    expect(after.slug).toBe("midnight-tee");
+  });
 });
