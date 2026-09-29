@@ -1,3 +1,4 @@
+import "lenis/dist/lenis.css";
 import { LenisProvider } from "@/components/motion";
 import { CartDrawer } from "@/components/storefront/cart-drawer";
 import { CartPanel } from "@/components/storefront/cart-panel";

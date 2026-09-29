@@ -21,7 +21,7 @@ export function LenisProvider({ children }: { children: React.ReactNode }) {
   const reduced = useReducedMotionSafe();
   if (reduced) return <>{children}</>;
   return (
-    <ReactLenis root options={{ lerp: 0.1, smoothWheel: true, autoRaf: false }}>
+    <ReactLenis root options={{ lerp: 0.1, smoothWheel: true, autoRaf: false, allowNestedScroll: true }}>
       <ScrollTriggerSync />
       {children}
     </ReactLenis>
