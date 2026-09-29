@@ -1,0 +1,11 @@
+-- Backstop for the "exactly one default address per user" invariant.
+-- The application already serializes createAddress/updateAddress/deleteAddress/setDefaultAddress
+-- per user (SELECT ... FOR UPDATE on the User row inside the transaction) and always clears the
+-- old default before setting a new one, so this index should never be hit in practice — it exists
+-- purely as a last-resort database-level guard against a second default slipping through.
+--
+-- This is a PARTIAL unique index (WHERE "isDefault"), which Prisma's schema DSL cannot express, so
+-- it is NOT declared in prisma/schema.prisma and will not show up when diffing the schema. If a
+-- future `prisma migrate dev` proposes `DROP INDEX "Address_userId_default_key"` because it looks
+-- like drift, decline it and keep this index (re-create it manually if it is ever dropped).
+CREATE UNIQUE INDEX "Address_userId_default_key" ON "Address"("userId") WHERE "isDefault";

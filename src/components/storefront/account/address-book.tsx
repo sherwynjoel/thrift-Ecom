@@ -7,11 +7,8 @@ import { AddressForm } from "@/components/storefront/account/address-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { addressLines, formatPhone } from "@/lib/address-format";
+import { MAX_ADDRESSES } from "@/lib/address-limits";
 import type { AddressView } from "@/server/services/addresses";
-
-// Mirrors the server-enforced MAX_ADDRESSES (src/server/services/addresses.ts); kept as a
-// local literal so this client component does not pull server/db code into its bundle.
-const MAX_ADDRESSES = 10;
 
 export function AddressBook({ addresses }: { addresses: AddressView[] }) {
   const [list, setList] = useState<AddressView[]>(addresses);

@@ -37,6 +37,32 @@ describe("addresses service", () => {
     await expect(createAddress(u.id, addr())).rejects.toBeInstanceOf(ConflictError);
   });
 
+  it("serializes concurrent creates so exactly one address ends up default", async () => {
+    const u = await createUser();
+    const results = await Promise.allSettled(
+      Array.from({ length: 5 }, (_, i) => createAddress(u.id, addr({ fullName: `Name ${i}` }))),
+    );
+    expect(results.every((r) => r.status === "fulfilled")).toBe(true);
+    const list = await listAddresses(u.id);
+    expect(list).toHaveLength(5);
+    expect(list.filter((x) => x.isDefault)).toHaveLength(1);
+  });
+
+  it("serializes concurrent creates so the ten-address cap is never exceeded", async () => {
+    const u = await createUser();
+    const results = await Promise.allSettled(
+      Array.from({ length: 12 }, (_, i) => createAddress(u.id, addr({ fullName: `Name ${i}` }))),
+    );
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    expect(fulfilled).toHaveLength(MAX_ADDRESSES);
+    expect(rejected).toHaveLength(2);
+    for (const r of rejected) expect(r.reason).toBeInstanceOf(ConflictError);
+    const list = await listAddresses(u.id);
+    expect(list).toHaveLength(MAX_ADDRESSES);
+    expect(list.filter((x) => x.isDefault)).toHaveLength(1);
+  });
+
   it("keeps addresses private to their owner", async () => {
     const u = await createUser();
     const other = await createUser();

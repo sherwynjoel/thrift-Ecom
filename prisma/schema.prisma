@@ -192,6 +192,10 @@ enum OfferType {
   QTY_PERCENT
 }
 
+// A partial unique index `Address_userId_default_key` ON ("userId") WHERE "isDefault" is applied by
+// migration 20260929214720_address_default_partial_unique as a database-level backstop for "at most
+// one default address per user". Prisma's schema DSL cannot express partial/filtered unique indexes,
+// so it is intentionally NOT declared here — do not let a future `prisma migrate dev` drop it as drift.
 model Address {
   id        String   @id @default(cuid())
   userId    String

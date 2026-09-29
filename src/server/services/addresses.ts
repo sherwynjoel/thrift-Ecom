@@ -1,9 +1,13 @@
+import { Prisma } from "@prisma/client";
 import { db } from "@/server/db";
 import { zodFieldErrors } from "@/server/action-result";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import { addressInputSchema } from "@/lib/validation/address";
+import { MAX_ADDRESSES } from "@/lib/address-limits";
 
-export const MAX_ADDRESSES = 10;
+export { MAX_ADDRESSES };
+
+type Tx = Prisma.TransactionClient;
 
 export interface AddressView {
   id: string; fullName: string; phone: string; line1: string; line2: string | null; landmark: string | null;
@@ -21,6 +25,18 @@ function parse(input: unknown) {
   return r.data;
 }
 
+// Locks the user's row for the lifetime of the enclosing transaction so that concurrent
+// createAddress/updateAddress/deleteAddress/setDefaultAddress calls for the SAME user are
+// serialized (Postgres blocks a second `FOR UPDATE` on the same row until the first transaction
+// commits). This is what makes the "count < MAX_ADDRESSES" and "at most one default" checks below
+// safe under concurrency — without it, two concurrent requests could both read a stale count/default
+// state and both pass. A partial unique index (`Address_userId_default_key`, see
+// prisma/migrations/20260929214720_address_default_partial_unique) backstops the default invariant
+// at the database level in case this lock is ever bypassed.
+async function lockUser(tx: Tx, userId: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+}
+
 export async function listAddresses(userId: string): Promise<AddressView[]> {
   return db.address.findMany({ where: { userId }, orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }], select });
 }
@@ -34,6 +50,7 @@ export async function getAddress(userId: string, id: string): Promise<AddressVie
 export async function createAddress(userId: string, input: unknown): Promise<AddressView> {
   const data = parse(input);
   return db.$transaction(async (tx) => {
+    await lockUser(tx, userId);
     const count = await tx.address.count({ where: { userId } });
     if (count >= MAX_ADDRESSES) throw new ConflictError(`You can save up to ${MAX_ADDRESSES} addresses. Delete one first.`);
     const isDefault = data.isDefault || count === 0;
@@ -45,6 +62,7 @@ export async function createAddress(userId: string, input: unknown): Promise<Add
 export async function updateAddress(userId: string, id: string, input: unknown): Promise<AddressView> {
   const data = parse(input);
   return db.$transaction(async (tx) => {
+    await lockUser(tx, userId);
     const existing = await tx.address.findFirst({ where: { id, userId } });
     if (!existing) throw new NotFoundError("Address");
     const isDefault = existing.isDefault || data.isDefault;
@@ -55,6 +73,7 @@ export async function updateAddress(userId: string, id: string, input: unknown):
 
 export async function setDefaultAddress(userId: string, id: string): Promise<AddressView[]> {
   await db.$transaction(async (tx) => {
+    await lockUser(tx, userId);
     const existing = await tx.address.findFirst({ where: { id, userId } });
     if (!existing) throw new NotFoundError("Address");
     await tx.address.updateMany({ where: { userId, isDefault: true }, data: { isDefault: false } });
@@ -65,6 +84,7 @@ export async function setDefaultAddress(userId: string, id: string): Promise<Add
 
 export async function deleteAddress(userId: string, id: string): Promise<void> {
   await db.$transaction(async (tx) => {
+    await lockUser(tx, userId);
     const existing = await tx.address.findFirst({ where: { id, userId } });
     if (!existing) throw new NotFoundError("Address");
     await tx.address.delete({ where: { id } });

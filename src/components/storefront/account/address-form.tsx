@@ -50,8 +50,8 @@ export function AddressForm({ initial, onSaved, onCancel, forceDefault = false }
       <div><Label htmlFor={id("name")}>Full name</Label><Input id={id("name")} autoComplete="name" value={values.fullName} onChange={set("fullName")} className={field} aria-invalid={Boolean(errors.fullName)} /><FieldError errors={errors.fullName} /></div>
       <div><Label htmlFor={id("phone")}>Mobile number</Label><Input id={id("phone")} type="tel" inputMode="numeric" autoComplete="tel-national" value={values.phone} onChange={set("phone")} className={field} aria-invalid={Boolean(errors.phone)} /><FieldError errors={errors.phone} /></div>
       <div className="sm:col-span-2"><Label htmlFor={id("line1")}>House, flat, street</Label><Input id={id("line1")} autoComplete="address-line1" value={values.line1} onChange={set("line1")} className={field} aria-invalid={Boolean(errors.line1)} /><FieldError errors={errors.line1} /></div>
-      <div className="sm:col-span-2"><Label htmlFor={id("line2")}>Area, locality (optional)</Label><Input id={id("line2")} autoComplete="address-line2" value={values.line2} onChange={set("line2")} className={field} /><FieldError errors={errors.line2} /></div>
-      <div><Label htmlFor={id("landmark")}>Landmark (optional)</Label><Input id={id("landmark")} autoComplete="off" value={values.landmark} onChange={set("landmark")} className={field} /><FieldError errors={errors.landmark} /></div>
+      <div className="sm:col-span-2"><Label htmlFor={id("line2")}>Area, locality (optional)</Label><Input id={id("line2")} autoComplete="address-line2" value={values.line2} onChange={set("line2")} className={field} aria-invalid={Boolean(errors.line2)} /><FieldError errors={errors.line2} /></div>
+      <div><Label htmlFor={id("landmark")}>Landmark (optional)</Label><Input id={id("landmark")} autoComplete="off" value={values.landmark} onChange={set("landmark")} className={field} aria-invalid={Boolean(errors.landmark)} /><FieldError errors={errors.landmark} /></div>
       <div><Label htmlFor={id("city")}>City</Label><Input id={id("city")} autoComplete="address-level2" value={values.city} onChange={set("city")} className={field} aria-invalid={Boolean(errors.city)} /><FieldError errors={errors.city} /></div>
       <div>
         <Label htmlFor={id("state")}>State</Label>
@@ -63,10 +63,17 @@ export function AddressForm({ initial, onSaved, onCancel, forceDefault = false }
       </div>
       <div><Label htmlFor={id("pincode")}>PIN code</Label><Input id={id("pincode")} inputMode="numeric" maxLength={6} autoComplete="postal-code" value={values.pincode} onChange={set("pincode")} className={field} aria-invalid={Boolean(errors.pincode)} /><FieldError errors={errors.pincode} /></div>
       {!forceDefault && (
-        <label className="flex min-h-11 items-center gap-3 text-sm sm:col-span-2">
-          <input type="checkbox" checked={values.isDefault} onChange={set("isDefault")} className="size-5 accent-brand" />
-          Make this my default address
-        </label>
+        <div className="sm:col-span-2">
+          <label className="flex min-h-11 items-center gap-3 text-sm">
+            <input type="checkbox" checked={values.isDefault} onChange={set("isDefault")} className="size-5 accent-brand" />
+            Make this my default address
+          </label>
+          {initial?.isDefault && !values.isDefault && (
+            <p className="mt-1 text-xs text-text-muted">
+              Your only default address stays default — set another address as default instead.
+            </p>
+          )}
+        </div>
       )}
       {message && <p className="text-sm text-danger sm:col-span-2" role="alert">{message}</p>}
       <div className="flex flex-wrap gap-3 sm:col-span-2">
