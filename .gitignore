@@ -2,11 +2,21 @@ node_modules/
 dist/
 build/
 .next/
+*.tsbuildinfo
 .env
 .env.*
 !.env.example
+!.env.test
 *.log
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+
+storage/uploads/
+test-results/
+playwright-report/
+coverage/
+
+# Superpowers SDD scratch
+.superpowers/
