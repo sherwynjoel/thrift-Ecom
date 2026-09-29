@@ -94,11 +94,17 @@ describe("catalog service", () => {
 
   it("returns product detail with variants and collections, 404 for draft or missing", async () => {
     const col = await createCollection({ name: "Detail Col" });
-    await createProduct({ name: "Detail", collectionIds: [col.id], variants: [{ size: "M", colorName: "Black", pricePaise: 64900 }] });
+    await createProduct({
+      name: "Detail",
+      collectionIds: [col.id],
+      variants: [{ size: "M", colorName: "Black", pricePaise: 64900 }],
+      images: [{ url: "/d1.svg", colorName: "Black" }, { url: "/d2.svg" }],
+    });
     await createProduct({ name: "Draft Detail", status: "DRAFT" });
     const d = await getProductBySlug("detail");
     expect(d.variants[0].pricePaise).toBe(64900);
     expect(d.collections[0].slug).toBe("detail-col");
+    expect(d.images.map((i) => i.colorName)).toEqual(["Black", null]);
     await expect(getProductBySlug("draft-detail")).rejects.toBeInstanceOf(NotFoundError);
     await expect(getProductBySlug("nope")).rejects.toBeInstanceOf(NotFoundError);
   });

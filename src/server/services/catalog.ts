@@ -21,7 +21,8 @@ export interface ProductCard {
   createdAt: Date;
 }
 
-export interface ProductDetail extends ProductCard {
+export interface ProductDetail extends Omit<ProductCard, "images"> {
+  images: { url: string; alt: string; colorName: string | null }[];
   description: string;
   fabric: string;
   variants: { id: string; sku: string; size: string; colorName: string; colorHex: string; pricePaise: number; stock: number }[];
@@ -198,7 +199,7 @@ export async function getProductBySlug(slug: string): Promise<ProductDetail> {
   const card = toCard({ ...p, images: p.images.slice(0, 2) });
   return {
     ...card,
-    images: p.images.map((i) => ({ url: i.url, alt: i.alt })),
+    images: p.images.map((i) => ({ url: i.url, alt: i.alt, colorName: i.colorName })),
     description: p.description,
     fabric: p.fabric,
     variants: p.variants.map((v) => ({
