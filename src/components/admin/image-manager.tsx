@@ -31,9 +31,12 @@ export function ImageManager({ productId, images, colorNames }: { productId: str
   }, [confirmDeleteId]);
 
   const upload = (files: FileList | null) => {
+    // Snapshot the files into a plain array before clearing the input: `files` is the *same live*
+    // FileList as `fileRef.current.files` (not a copy), so resetting `fileRef.current.value` first
+    // would empty it out from under us and every upload would silently no-op.
+    const picked = files ? Array.from(files) : [];
     if (fileRef.current) fileRef.current.value = "";
-    if (!files?.length) return;
-    const picked = Array.from(files);
+    if (!picked.length) return;
     if (picked.length > MAX_FILES_PER_UPLOAD) {
       toast.error(`Upload at most ${MAX_FILES_PER_UPLOAD} images at a time`);
       return;
