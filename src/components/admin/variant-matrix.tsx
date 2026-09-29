@@ -4,20 +4,30 @@ import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { paiseToRupees, rupeesToPaise } from "@/lib/money";
-import type { ProductFormState } from "@/lib/product-form";
+import { rebuildRows, type ProductFormState } from "@/lib/product-form";
 import { SIZES } from "@/lib/sizes";
-import { buildVariantRows, type ColorSpec, type VariantRow } from "@/lib/variant-rows";
+import { type ColorSpec, type VariantRow } from "@/lib/variant-rows";
 import { cn } from "@/lib/utils";
 
 export function VariantMatrix({ state, onChange, inCarts }: { state: ProductFormState; onChange: (next: ProductFormState) => void; inCarts: Record<string, number> }) {
   const [fill, setFill] = useState("");
 
-  const withMatrix = (sizes: string[], colors: ColorSpec[]) => onChange({ ...state, sizes, colors, rows: buildVariantRows(sizes, colors, state.rows) });
+  const withMatrix = (sizes: string[], colors: ColorSpec[]) => onChange({ ...state, sizes, colors, rows: rebuildRows(state, sizes, colors) });
   const toggleSize = (size: string) => withMatrix(state.sizes.includes(size) ? state.sizes.filter((s) => s !== size) : [...state.sizes, size], state.colors);
   const setColor = (i: number, patch: Partial<ColorSpec>) => withMatrix(state.sizes, state.colors.map((c, j) => (j === i ? { ...c, ...patch } : c)));
   const addColor = () => withMatrix(state.sizes, [...state.colors, { name: "", hex: "#ffffff" }]);
   const removeColor = (i: number) => withMatrix(state.sizes, state.colors.filter((_, j) => j !== i));
   const setRow = (key: string, patch: Partial<VariantRow>) => onChange({ ...state, rows: state.rows.map((r) => (r.key === key ? { ...r, ...patch } : r)) });
+  const setPriceText = (key: string, text: string) => {
+    const trimmed = text.trim();
+    const parsed = trimmed ? rupeesToPaise(text) : null;
+    const isInvalid = trimmed !== "" && parsed === null;
+    onChange({
+      ...state,
+      priceTexts: { ...state.priceTexts, [key]: text },
+      rows: state.rows.map((r) => (r.key === key ? { ...r, pricePaise: isInvalid ? r.pricePaise : parsed } : r)),
+    });
+  };
   const fillStock = () => {
     const n = Number(fill);
     if (!Number.isInteger(n) || n < 0) return;
@@ -60,19 +70,32 @@ export function VariantMatrix({ state, onChange, inCarts }: { state: ProductForm
             <table className="w-full min-w-[560px] text-sm" data-testid="variant-rows">
               <thead className="bg-surface text-left text-text-muted"><tr><th className="p-2">Color</th><th>Size</th><th>Price override (₹)</th><th>Stock</th><th className="p-2">Notes</th></tr></thead>
               <tbody>
-                {state.rows.map((r) => (
+                {state.rows.map((r) => {
+                  const priceText = state.priceTexts[r.key] ?? paiseToRupees(r.pricePaise);
+                  const priceInvalid = priceText.trim() !== "" && rupeesToPaise(priceText) === null;
+                  return (
                   <tr key={r.key} className="border-t border-border" data-testid="variant-row">
                     <td className="p-2"><span className="inline-flex items-center gap-2"><span className="size-3 rounded-full border border-border" style={{ backgroundColor: r.colorHex }} />{r.colorName}</span></td>
                     <td>{r.size}</td>
                     <td>
-                      <input key={`${r.key}-price`} defaultValue={paiseToRupees(r.pricePaise)} placeholder="Base price" inputMode="decimal" aria-label={`Price override ${r.colorName} ${r.size}`} onBlur={(e) => setRow(r.key, { pricePaise: rupeesToPaise(e.target.value) })} className="h-8 w-28 rounded-md border border-border bg-bg px-2" />
+                      <input
+                        value={priceText}
+                        placeholder="Base price"
+                        inputMode="decimal"
+                        aria-label={`Price override ${r.colorName} ${r.size}`}
+                        aria-invalid={priceInvalid}
+                        onChange={(e) => setPriceText(r.key, e.target.value)}
+                        className={cn("h-8 w-28 rounded-md border bg-bg px-2", priceInvalid ? "border-danger" : "border-border")}
+                        data-testid="price-override"
+                      />
                     </td>
                     <td>
                       <input type="number" min={0} value={r.stock} aria-label={`Stock ${r.colorName} ${r.size}`} onChange={(e) => setRow(r.key, { stock: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} className="h-8 w-24 rounded-md border border-border bg-bg px-2" data-testid="stock-input" />
                     </td>
                     <td className="p-2 text-xs text-text-muted">{r.id && inCarts[r.id] ? `In ${inCarts[r.id]} bag(s), keep it or set stock to 0` : r.id ? "" : "New"}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -28,7 +28,7 @@ export default async function EditProductPage({ params }: Props) {
         <StatusBadge status={product.status} />
         {product.status === "ACTIVE" && <Link href={`/products/${product.slug}`} target="_blank" className="text-sm underline-offset-4 hover:underline" data-testid="view-on-store">View on store ↗</Link>}
       </div>
-      <ProductEditor key={product.id + product.variants.length} product={product} collections={collections} />
+      <ProductEditor key={product.variants.map((v) => `${v.id}:${v.stock}:${v.pricePaise}`).join()} product={product} collections={collections} />
       <section className="rounded-md border border-danger/40 p-5">
         <h2 className="mb-2 text-xl">Danger zone</h2>
         <DeleteProductButton id={product.id} status={product.status} />
