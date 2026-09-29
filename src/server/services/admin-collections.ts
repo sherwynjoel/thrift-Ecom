@@ -1,6 +1,6 @@
-import type { ProductStatus } from "@prisma/client";
+import { Prisma, type ProductStatus } from "@prisma/client";
 import { db } from "@/server/db";
-import { NotFoundError, ValidationError } from "@/server/errors";
+import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import { zodFieldErrors } from "@/server/action-result";
 import { getStorage } from "@/server/adapters/storage";
 import { storeImage, uploadKeyFromUrl } from "@/server/uploads";
@@ -51,11 +51,25 @@ export async function getAdminCollection(id: string): Promise<AdminCollectionDet
   };
 }
 
+/** `collectionSlug` already picks a slug it believes is free, but two concurrent saves can both land on
+ * the same one (e.g. two tabs creating "Summer Drop" at once); the DB's unique constraint is the real
+ * guard, so map its P2002 to a ConflictError with a field error on slug instead of a 500. */
+function mapSlugConflict(err: unknown): never {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+    throw new ConflictError("That slug was just taken by another save. Choose a different one.", { slug: ["That slug is already in use"] });
+  }
+  throw err;
+}
+
 export async function createCollection(input: unknown): Promise<{ id: string; slug: string }> {
   const data = parse(input);
   const slug = await collectionSlug(data.slug, data.name);
-  const c = await db.collection.create({ data: { slug, name: data.name, description: data.description, isFeatured: data.isFeatured, isActive: data.isActive, sortOrder: data.sortOrder } });
-  return { id: c.id, slug };
+  try {
+    const c = await db.collection.create({ data: { slug, name: data.name, description: data.description, isFeatured: data.isFeatured, isActive: data.isActive, sortOrder: data.sortOrder } });
+    return { id: c.id, slug };
+  } catch (err) {
+    mapSlugConflict(err);
+  }
 }
 
 export async function updateCollection(id: string, input: unknown): Promise<{ id: string; slug: string }> {
@@ -63,8 +77,12 @@ export async function updateCollection(id: string, input: unknown): Promise<{ id
   const exists = await db.collection.findUnique({ where: { id }, select: { id: true } });
   if (!exists) throw new NotFoundError("Collection");
   const slug = await collectionSlug(data.slug, data.name, id);
-  await db.collection.update({ where: { id }, data: { slug, name: data.name, description: data.description, isFeatured: data.isFeatured, isActive: data.isActive, sortOrder: data.sortOrder } });
-  return { id, slug };
+  try {
+    await db.collection.update({ where: { id }, data: { slug, name: data.name, description: data.description, isFeatured: data.isFeatured, isActive: data.isActive, sortOrder: data.sortOrder } });
+    return { id, slug };
+  } catch (err) {
+    mapSlugConflict(err);
+  }
 }
 
 export async function deleteCollection(id: string): Promise<void> {
@@ -79,7 +97,15 @@ export async function setCollectionHero(id: string, file: File | null): Promise<
   const c = await db.collection.findUnique({ where: { id }, select: { heroImageUrl: true } });
   if (!c) throw new NotFoundError("Collection");
   const url = file ? (await storeImage(file, `collections/${id}`)).url : null;
-  await db.collection.update({ where: { id }, data: { heroImageUrl: url } });
+  try {
+    await db.collection.update({ where: { id }, data: { heroImageUrl: url } });
+  } catch (err) {
+    // The new file is already on disk but nothing in the DB points to it yet; clean it up so a failed
+    // update doesn't orphan it, then let the original error surface.
+    const newKey = url ? uploadKeyFromUrl(url) : null;
+    if (newKey) await getStorage().delete(newKey).catch((cleanupErr) => console.error("[admin-collections] failed-update cleanup failed", cleanupErr));
+    throw err;
+  }
   const oldKey = c.heroImageUrl ? uploadKeyFromUrl(c.heroImageUrl) : null;
   if (oldKey) await getStorage().delete(oldKey).catch((err) => console.error("[admin-collections] hero cleanup failed", err));
   return url;
@@ -95,5 +121,7 @@ export async function reorderCollectionProducts(id: string, orderedProductIds: s
 }
 
 export async function removeProductFromCollection(id: string, productId: string): Promise<void> {
+  const exists = await db.collection.findUnique({ where: { id }, select: { id: true } });
+  if (!exists) throw new NotFoundError("Collection");
   await db.productCollection.deleteMany({ where: { collectionId: id, productId } });
 }

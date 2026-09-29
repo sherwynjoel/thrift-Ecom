@@ -8,6 +8,8 @@ import { deleteProductAction } from "@/app/admin/products/actions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 
+const GENERIC_ERROR = "Something went wrong. Please try again.";
+
 export function DeleteProductButton({ id, status }: { id: string; status: ProductStatus }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
@@ -15,12 +17,17 @@ export function DeleteProductButton({ id, status }: { id: string; status: Produc
   if (status === "ACTIVE") return <p className="text-xs text-text-muted">Archive the product to delete it.</p>;
   const confirm = () =>
     start(async () => {
-      const r = await deleteProductAction(id);
-      if (r.ok) {
-        toast.success("Product deleted");
-        router.push("/admin/products");
-      } else {
-        toast.error(r.message);
+      try {
+        const r = await deleteProductAction(id);
+        if (r.ok) {
+          toast.success("Product deleted");
+          router.push("/admin/products");
+        } else {
+          toast.error(r.message);
+          setOpen(false);
+        }
+      } catch {
+        toast.error(GENERIC_ERROR);
         setOpen(false);
       }
     });

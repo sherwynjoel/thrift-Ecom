@@ -35,8 +35,8 @@ export class UnauthorizedError extends DomainError {
 }
 
 export class ConflictError extends DomainError {
-  constructor(message: string) {
-    super("CONFLICT", message, 409);
+  constructor(message: string, fieldErrors?: Record<string, string[]>) {
+    super("CONFLICT", message, 409, fieldErrors);
   }
 }
 

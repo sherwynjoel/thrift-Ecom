@@ -1,4 +1,13 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { LocalDiskStorage } from "@/server/adapters/storage/local-disk";
+
+const root = mkdtempSync(join(tmpdir(), "admin-prod-"));
+const storage = new LocalDiskStorage(root, "/api/uploads");
+vi.mock("@/server/adapters/storage", async (orig) => ({ ...(await orig<typeof import("@/server/adapters/storage")>()), getStorage: () => storage }));
+
 import { db } from "@/server/db";
 import { resetDb } from "../helpers/db";
 import { createCollection, createProduct, linkProductToCollection } from "../helpers/fixtures";
@@ -9,7 +18,10 @@ import {
   listAdminProducts,
   updateProduct,
 } from "@/server/services/admin-products";
+import { addProductImages } from "@/server/services/admin-images";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
+
+const png = () => new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])], "a.png", { type: "image/png" });
 
 const input = (over: Record<string, unknown> = {}) => ({
   name: "Midnight Tee",
@@ -142,5 +154,63 @@ describe("admin products service", () => {
     await updateProduct(id, input({ slug }));
     const after = await getAdminProduct(id);
     expect(after.slug).toBe("midnight-tee");
+  });
+
+  it("deletes uploaded image files when the product is deleted", async () => {
+    const { id } = await adminCreate(input({ status: "ARCHIVED" }));
+    const [img] = await addProductImages(id, [png()]);
+    const filePath = join(root, img.url.replace("/api/uploads/", ""));
+    expect(existsSync(filePath)).toBe(true);
+    await deleteProduct(id);
+    expect(existsSync(filePath)).toBe(false);
+  });
+
+  it("still deletes the product when storage cleanup fails", async () => {
+    const { id } = await adminCreate(input({ status: "ARCHIVED" }));
+    await addProductImages(id, [png()]);
+    const spy = vi.spyOn(storage, "delete").mockRejectedValueOnce(new Error("disk full"));
+    try {
+      await expect(deleteProduct(id)).resolves.toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
+    await expect(getAdminProduct(id)).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("applies stock as a delta against the loaded value so a concurrent change is not overwritten", async () => {
+    const { id } = await adminCreate(input());
+    const before = await getAdminProduct(id);
+    const m = before.variants.find((v) => v.size === "M")!; // stock 5
+    const l = before.variants.find((v) => v.size === "L")!; // stock 2
+    // A concurrent checkout decrements M's real stock while this admin's form is still open on stale data.
+    await db.productVariant.update({ where: { id: m.id }, data: { stock: { decrement: 3 } } }); // now 2
+    await updateProduct(id, input({
+      variants: [
+        { id: m.id, size: "M", colorName: "Black", colorHex: "#111111", pricePaise: null, stock: 7, originalStock: 5 }, // admin's intent: +2
+        { id: l.id, size: "L", colorName: "Black", colorHex: "#111111", pricePaise: 74900, stock: 2, originalStock: 2 }, // unchanged
+      ],
+    }));
+    const after = await getAdminProduct(id);
+    // 2 (post-checkout) + 2 (admin's delta) = 4, not the raw submitted 7.
+    expect(after.variants.find((v) => v.id === m.id)?.stock).toBe(4);
+    expect(after.variants.find((v) => v.id === l.id)?.stock).toBe(2);
+  });
+
+  it("rejects a save whose delta would drive stock negative and rolls back the whole save", async () => {
+    const { id } = await adminCreate(input());
+    const before = await getAdminProduct(id);
+    const m = before.variants.find((v) => v.size === "M")!;
+    const l = before.variants.find((v) => v.size === "L")!;
+    await db.productVariant.update({ where: { id: m.id }, data: { stock: 0 } }); // sold out concurrently
+    await expect(updateProduct(id, input({
+      name: "Should not save",
+      variants: [
+        { id: m.id, size: "M", colorName: "Black", colorHex: "#111111", pricePaise: null, stock: 4, originalStock: 5 }, // delta -1
+        { id: l.id, size: "L", colorName: "Black", colorHex: "#111111", pricePaise: 74900, stock: 2, originalStock: 2 },
+      ],
+    }))).rejects.toBeInstanceOf(ConflictError);
+    const after = await getAdminProduct(id);
+    expect(after.variants.find((v) => v.id === m.id)?.stock).toBe(0);
+    expect(after.name).toBe("Midnight Tee");
   });
 });

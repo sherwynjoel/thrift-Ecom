@@ -2,6 +2,8 @@ import { Prisma, type Fit, type ProductStatus } from "@prisma/client";
 import { db } from "@/server/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import { zodFieldErrors } from "@/server/action-result";
+import { getStorage } from "@/server/adapters/storage";
+import { uploadKeyFromUrl } from "@/server/uploads";
 import { productInputSchema, type ProductInput } from "@/lib/validation/admin";
 import { slugify, uniqueSlug } from "@/lib/slug";
 import type { Page } from "@/server/services/catalog";
@@ -85,11 +87,24 @@ async function syncVariants(tx: Tx, productId: string, slug: string, variants: P
   }
 
   for (const [i, v] of variants.entries()) {
-    const data = { size: v.size, colorName: v.colorName.trim(), colorHex: v.colorHex, pricePaise: v.pricePaise, stock: v.stock, sortOrder: i };
+    const data = { size: v.size, colorName: v.colorName.trim(), colorHex: v.colorHex, pricePaise: v.pricePaise, sortOrder: i };
     if (v.id) {
-      await tx.productVariant.update({ where: { id: v.id }, data });
+      // Stock is applied as a delta against the value the admin actually had loaded (`originalStock`),
+      // not written as an absolute number. That way a concurrent change to the real stock (e.g. a
+      // checkout decrementing it while this form was open) is preserved instead of being clobbered by
+      // a save based on a stale snapshot. The increment runs at the DB layer so it composes correctly
+      // with any write that lands between this transaction's read and its update.
+      const prev = currentById.get(v.id)!;
+      const original = v.originalStock ?? prev.stock;
+      const delta = v.stock - original;
+      if (delta === 0) {
+        await tx.productVariant.update({ where: { id: v.id }, data });
+      } else {
+        const updated = await tx.productVariant.update({ where: { id: v.id }, data: { ...data, stock: { increment: delta } } });
+        if (updated.stock < 0) throw new ConflictError("Stock changed while you were editing — reload");
+      }
     } else {
-      await tx.productVariant.create({ data: { ...data, productId, sku: await freeSku(tx, slug, v.colorName, v.size) } });
+      await tx.productVariant.create({ data: { ...data, stock: v.stock, productId, sku: await freeSku(tx, slug, v.colorName, v.size) } });
     }
   }
 }
@@ -152,10 +167,14 @@ export async function updateProduct(id: string, input: unknown): Promise<{ id: s
 }
 
 export async function deleteProduct(id: string): Promise<void> {
-  const p = await db.product.findUnique({ where: { id }, select: { status: true } });
+  const p = await db.product.findUnique({ where: { id }, select: { status: true, images: { select: { url: true } } } });
   if (!p) throw new NotFoundError("Product");
   if (p.status === "ACTIVE") throw new ConflictError("Archive the product before deleting it");
   await db.product.delete({ where: { id } });
+  for (const { url } of p.images) {
+    const key = uploadKeyFromUrl(url);
+    if (key) await getStorage().delete(key).catch((err) => console.error("[admin-products] image cleanup failed", err));
+  }
 }
 
 export async function getAdminProduct(id: string): Promise<AdminProductDetail> {

@@ -9,20 +9,21 @@ export const metadata = { title: "Products" };
 
 const STATUSES: ProductStatus[] = ["ACTIVE", "DRAFT", "ARCHIVED"];
 
-type Props = { searchParams: Promise<{ q?: string; status?: string; page?: string }> };
+type Props = { searchParams: Promise<{ q?: string | string[]; status?: string; page?: string }> };
 
 export default async function AdminProductsPage({ searchParams }: Props) {
   await requireAdminPage();
   const sp = await searchParams;
+  const q = typeof sp.q === "string" ? sp.q : undefined;
   const status = STATUSES.find((s) => s === sp.status);
   const page = Math.max(1, Number(sp.page) || 1);
-  const result = await listAdminProducts({ q: sp.q, status, page });
+  const result = await listAdminProducts({ q, status, page });
   const link = (p: number) => {
-    const q = new URLSearchParams();
-    if (sp.q) q.set("q", sp.q);
-    if (status) q.set("status", status);
-    if (p > 1) q.set("page", String(p));
-    return `/admin/products${q.size ? `?${q}` : ""}`;
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (status) params.set("status", status);
+    if (p > 1) params.set("page", String(p));
+    return `/admin/products${params.size ? `?${params}` : ""}`;
   };
   return (
     <div className="space-y-6">
@@ -34,7 +35,7 @@ export default async function AdminProductsPage({ searchParams }: Props) {
         <Button render={<Link href="/admin/products/new" />} nativeButton={false} data-testid="new-product">New product</Button>
       </div>
       <form className="flex flex-wrap gap-2" role="search">
-        <input name="q" defaultValue={sp.q ?? ""} placeholder="Search name or slug" aria-label="Search products" className="h-9 w-64 rounded-md border border-border bg-surface px-3 text-sm" />
+        <input name="q" defaultValue={q ?? ""} placeholder="Search name or slug" aria-label="Search products" className="h-9 w-64 rounded-md border border-border bg-surface px-3 text-sm" />
         <select name="status" defaultValue={status ?? ""} aria-label="Status" className="h-9 rounded-md border border-border bg-surface px-3 text-sm">
           <option value="">All statuses</option>
           {STATUSES.map((s) => <option key={s} value={s}>{s.toLowerCase()}</option>)}

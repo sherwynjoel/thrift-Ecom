@@ -88,6 +88,7 @@ export function toProductInput(s: ProductFormState): { input: ProductInput | nul
     }
   }
   if (Object.keys(errors).length) return { input: null, errors };
+  const originalStockById = new Map(s.originalRows.filter((r) => r.id).map((r) => [r.id!, r.stock]));
   return {
     errors,
     input: {
@@ -101,7 +102,10 @@ export function toProductInput(s: ProductFormState): { input: ProductInput | nul
         // there's no text entry at all (e.g. a row recovered from originalRows after rebuildRows pruned it).
         const pricePaise = text !== undefined ? (text.trim() ? rupeesToPaise(text) : null) : r.pricePaise;
         return {
-          ...(r.id ? { id: r.id } : {}),
+          // originalStock lets the server apply this row's stock as a delta rather than an absolute
+          // write; see `variantInputSchema`. Every row that carries an `id` traces back to a server-
+          // loaded variant in `originalRows`, so the lookup always hits.
+          ...(r.id ? { id: r.id, originalStock: originalStockById.get(r.id) ?? r.stock } : {}),
           size: r.size as ProductInput["variants"][number]["size"],
           colorName: r.colorName,
           colorHex: r.colorHex,

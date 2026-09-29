@@ -17,6 +17,11 @@ export const variantInputSchema = z.object({
   colorHex: hexColorSchema,
   pricePaise: paise.min(1).nullable(),
   stock: z.number().int().min(0, "Stock cannot be negative").max(100_000),
+  /** Stock as originally loaded into the editor, for an existing variant (has `id`). The service applies
+   * `stock - originalStock` as a delta rather than writing `stock` as an absolute value, so a save from a
+   * form that has been open a while doesn't clobber stock changes made elsewhere (e.g. by checkout) in the
+   * meantime. Omitted for new variants, where `stock` is written as-is. */
+  originalStock: z.number().int().min(0).max(100_000).optional(),
 });
 
 export const productInputSchema = z
