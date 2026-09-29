@@ -8,8 +8,11 @@ const nextConfig: NextConfig = {
   // Markdown pages are read from disk at request time; make sure serverless/standalone builds ship them.
   outputFileTracingIncludes: { "/**": ["./content/**/*"] },
   experimental: {
-    // Server Actions default to a 1 MB body; image uploads allow up to 10 x 5 MB.
-    serverActions: { bodySizeLimit: "55mb" },
+    // Server Actions default to a 1 MB body. Images are uploaded one file per action call (see
+    // ImageManager/HeroUploader), so this only needs headroom over MAX_UPLOAD_BYTES (5 MB) plus
+    // multipart overhead — kept low because this limit applies to every Server Action, including
+    // anonymous storefront ones.
+    serverActions: { bodySizeLimit: "6mb" },
   },
   images: {
     dangerouslyAllowSVG: true,

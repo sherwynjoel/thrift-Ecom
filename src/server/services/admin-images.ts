@@ -4,9 +4,10 @@ import { zodFieldErrors } from "@/server/action-result";
 import { getStorage } from "@/server/adapters/storage";
 import { storeImage, uploadKeyFromUrl, validateImage } from "@/server/uploads";
 import { imageUpdateSchema } from "@/lib/validation/admin";
+import { MAX_FILES_PER_UPLOAD } from "@/lib/uploads";
 import type { AdminImage } from "@/server/services/admin-products";
 
-export const MAX_FILES_PER_UPLOAD = 10;
+export { MAX_FILES_PER_UPLOAD };
 export const MAX_IMAGES_PER_PRODUCT = 20;
 
 function toAdmin(i: { id: string; url: string; alt: string; colorName: string | null; sortOrder: number }): AdminImage {

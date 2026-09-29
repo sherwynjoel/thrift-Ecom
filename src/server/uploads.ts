@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { ValidationError } from "@/server/errors";
 import { getStorage } from "@/server/adapters/storage";
+import { MAX_UPLOAD_BYTES } from "@/lib/uploads";
 
-export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+export { MAX_UPLOAD_BYTES };
 
 type Detected = { ext: "png" | "jpg" | "webp"; contentType: string };
 
