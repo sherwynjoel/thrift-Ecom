@@ -52,6 +52,12 @@ export class RateLimitedError extends DomainError {
   }
 }
 
+export class PaymentError extends DomainError {
+  constructor(message = "The payment could not be processed. Please try again.") {
+    super("PAYMENT_ERROR", message, 502);
+  }
+}
+
 export type ErrorBody = {
   error: { code: string; message: string; details?: unknown };
 };
