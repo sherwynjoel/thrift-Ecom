@@ -30,4 +30,13 @@ describe("requestPasswordReset", () => {
     await requestPasswordReset("nobody@example.com");
     expect(outbox.sent).toHaveLength(0);
   });
+
+  it("escapes the user's name in the email html", async () => {
+    await registerUser({ name: "<b>Evil</b>", email: "evil@example.com", password: "hunter2hunter2" });
+    await requestPasswordReset("evil@example.com");
+    expect(outbox.sent).toHaveLength(1);
+    const msg = outbox.sent[0];
+    expect(msg.html).toContain("&lt;b&gt;Evil&lt;/b&gt;");
+    expect(msg.html).not.toContain("<b>Evil</b>");
+  });
 });

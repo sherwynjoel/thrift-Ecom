@@ -5,6 +5,7 @@ import { ConflictError, NotFoundError, UnauthorizedError, ValidationError } from
 import { registerSchema, updateProfileSchema, changePasswordSchema, passwordSchema } from "@/lib/validation/auth";
 import { getEmail } from "@/server/adapters/email";
 import { BRAND } from "@/config/brand";
+import { escapeHtml } from "@/lib/escape-html";
 
 export interface PublicUser {
   id: string;
@@ -83,7 +84,7 @@ export async function requestPasswordReset(email: string): Promise<void> {
     to: issued.user.email,
     subject: `Reset your ${BRAND.name} password`,
     text: `Reset your password: ${link}\nThis link works once and expires in one hour.`,
-    html: `<p>Hi ${issued.user.name ?? "there"},</p><p><a href="${link}">Reset your password</a></p><p>This link works once and expires in one hour. If you did not ask for this, ignore this email.</p>`,
+    html: `<p>Hi ${escapeHtml(issued.user.name ?? "there")},</p><p><a href="${link}">Reset your password</a></p><p>This link works once and expires in one hour. If you did not ask for this, ignore this email.</p>`,
   });
 }
 
