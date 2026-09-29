@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "@/server/db";
 import { zodFieldErrors } from "@/server/action-result";
 import { ConflictError, NotFoundError, PaymentError, StockChangedError, ValidationError, type StockIssue } from "@/server/errors";
-import { getPaymentProvider, type ProviderName } from "@/server/payments";
+import { getPaymentProvider, type PaymentProvider, type ProviderName } from "@/server/payments";
 import { quote } from "@/server/services/promotions";
 import { addOrderEvent, orderWithItems, toOrderSummary, toOrderView, type OrderSummary, type OrderView, type Tx } from "@/server/services/order-records";
 import { notifyOrder } from "@/server/services/notifications";
@@ -118,33 +118,72 @@ function byVariantId<T extends { variantId: string | null }>(items: T[]): T[] {
   return [...items].sort((a, b) => (a.variantId ?? "").localeCompare(b.variantId ?? ""));
 }
 
-/**
- * A new checkout attempt supersedes the user's own still-open pending orders instead of leaving
- * them to compete with the fresh one for the same stock (which otherwise makes `reconcileCartStock`
- * see the user's own reservation as "sold out" and strip it from their bag). A payment that still
- * lands on a superseded order is handled by the existing EXPIRED re-reserve path in `markOrderPaid`.
- */
-async function supersedeOpenOrders(userId: string): Promise<void> {
-  const open = await db.order.findMany({ where: { userId, status: "PENDING_PAYMENT" }, select: { id: true } });
-  for (const o of open) {
-    await releaseOrder(o.id, ["PENDING_PAYMENT"], "EXPIRED", "EXPIRED", "Superseded by a new checkout");
-  }
+/** Serializes concurrent `placeOrder` calls for the same user (double submit, two tabs) behind one row lock. */
+async function lockUser(tx: Tx, userId: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
 }
 
 /**
- * Re-checks a coupon's usage limits against live data, inside the same transaction that reserves
- * stock and creates the order, while holding a row lock on the coupon. `quote()`'s check (above)
- * only reflects the state at the time the page loaded a quote; without this, N concurrent checkouts
- * can all pass that check and all use a `usageLimit: 1` coupon. Counts paid-like orders plus other
- * unexpired PENDING_PAYMENT orders already holding the code, so two carts racing for the same
- * single-use coupon can't both win.
+ * True when an open order IS this checkout attempt: same items (variantId + quantity), same coupon,
+ * same total, under the same provider. A retry (double-click Pay, two tabs, a client retry after a
+ * dropped response) that still matches its still-open order should hand back that same order rather
+ * than superseding it — superseding a payable order is itself the bug this replaces (see N1).
  */
-async function assertCouponStillValid(tx: Tx, code: string, userId: string, now: Date): Promise<void> {
+function sameOpenOrder(
+  o: { totalPaise: number; couponCode: string | null; paymentProvider: string; items: { variantId: string | null; quantity: number }[] },
+  rows: CheckoutLineRow[], couponCode: string | null, totalPaise: number, providerName: string,
+): boolean {
+  if (o.paymentProvider !== providerName || o.totalPaise !== totalPaise) return false;
+  if ((o.couponCode ?? null) !== couponCode) return false;
+  const want = new Map(rows.map((r) => [r.variantId, r.quantity]));
+  const have = o.items.filter((i) => i.variantId !== null);
+  if (have.length !== want.size) return false;
+  return have.every((it) => want.get(it.variantId!) === it.quantity);
+}
+
+/**
+ * Builds the checkout payload for a reused order, waiting briefly for `providerOrderId` if a
+ * sibling `placeOrder` call (the one that actually created the order, see `sameOpenOrder` above) is
+ * still in the short window between its transaction committing and its own `provider.createOrder`
+ * call finishing. That call is deliberately outside any transaction (it is a network round trip to
+ * the payment provider), so this is the only way to hand back the *same* provider order rather than
+ * creating a second one.
+ */
+async function waitForCheckoutPayload(orderId: string, provider: PaymentProvider, timeoutMs = 3000): Promise<CheckoutPayload> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const o = await db.order.findUnique({ where: { id: orderId }, select: { number: true, totalPaise: true, providerOrderId: true, shipName: true, shipPhone: true, email: true } });
+    if (!o) throw new NotFoundError("Order");
+    if (o.providerOrderId) {
+      return {
+        orderId, number: o.number, amountPaise: o.totalPaise, currency: "INR", provider: provider.name,
+        providerOrderId: o.providerOrderId, keyId: provider.publicKey, prefill: { name: o.shipName, email: o.email, contact: o.shipPhone },
+      };
+    }
+    if (Date.now() >= deadline) throw new ConflictError("This order is still being set up. Please try again in a moment.");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
+/** Locks the coupon row so concurrent checkouts using the same code are serialized. */
+async function lockCoupon(tx: Tx, code: string): Promise<{ usageLimit: number | null; perUserLimit: number | null } | null> {
   const rows = await tx.$queryRaw<{ usageLimit: number | null; perUserLimit: number | null }[]>`
     SELECT "usageLimit", "perUserLimit" FROM "Coupon" WHERE code = ${code} FOR UPDATE
   `;
-  const coupon = rows[0];
-  if (!coupon || (coupon.usageLimit === null && coupon.perUserLimit === null)) return;
+  return rows[0] ?? null;
+}
+
+/**
+ * Re-checks a coupon's usage limits against live data while still holding `lockCoupon`'s row lock.
+ * `quote()`'s check (above) only reflects the state at the time the page loaded a quote; without
+ * this, N concurrent checkouts can all pass that check and all use a `usageLimit: 1` coupon. Counts
+ * paid-like orders plus other unexpired PENDING_PAYMENT orders already holding the code, so two
+ * carts racing for the same single-use coupon can't both win. Must run after any same-user orders
+ * using this code have already been superseded in this transaction (placeOrder does this), or a
+ * user's own about-to-be-replaced order would count against their own retry.
+ */
+async function checkCouponUsage(tx: Tx, code: string, userId: string, now: Date, coupon: { usageLimit: number | null; perUserLimit: number | null }): Promise<void> {
+  if (coupon.usageLimit === null && coupon.perUserLimit === null) return;
   const paidWhere = { couponCode: code, status: { in: [...PAID_STATUSES] } } satisfies Prisma.OrderWhereInput;
   const pendingWhere = { couponCode: code, status: "PENDING_PAYMENT" as const, expiresAt: { gt: now } } satisfies Prisma.OrderWhereInput;
   if (coupon.usageLimit !== null) {
@@ -172,11 +211,12 @@ export async function placeOrder(userId: string, input: unknown): Promise<Checko
   const address = await db.address.findFirst({ where: { id: addressId, userId } });
   if (!address) throw new ValidationError({ addressId: ["Choose a delivery address"] });
 
-  await supersedeOpenOrders(userId);
-
   const loaded = await loadCheckoutLines(userId);
   if (loaded.length === 0) throw new ValidationError({ cart: ["Your bag is empty"] });
-  const { rows, issues } = await reconcileCartStock(loaded);
+  // The user's own unexpired PENDING_PAYMENT orders haven't been touched yet at this point (superseding
+  // now happens inside the transaction below, so a failed attempt never destroys a still-payable order,
+  // see N1) — pass userId so their own reservation still counts as available to them (see N2).
+  const { rows, issues } = await reconcileCartStock(loaded, userId);
   if (issues.length) throw new StockChangedError(issues);
 
   const now = new Date();
@@ -185,11 +225,33 @@ export async function placeOrder(userId: string, input: unknown): Promise<Checko
   if (price.totalPaise < MIN_ORDER_PAISE) throw new ValidationError({ couponCode: ["Order total must be at least ₹1"] });
 
   const provider = getPaymentProvider();
+  const wantCouponCode = price.applied === "coupon" && price.coupon ? price.coupon.code : null;
 
-  const order = await db.$transaction(async (tx) => {
-    if (price.applied === "coupon" && price.coupon) {
-      await assertCouponStillValid(tx, price.coupon.code, userId, now);
+  const outcome = await db.$transaction(async (tx) => {
+    await lockUser(tx, userId);
+
+    // Re-read the user's open orders now that we hold their lock: a sibling placeOrder call may have
+    // just committed one. Reuse it if it is this exact attempt (N1); otherwise supersede it below,
+    // inside this same transaction, so a failure anywhere after this point (a coupon that just lost
+    // its race, a stock miss) rolls the supersede back too and leaves it payable.
+    const openOrders = await tx.order.findMany({
+      where: { userId, status: "PENDING_PAYMENT", expiresAt: { gt: now } },
+      include: { items: true },
+      orderBy: { createdAt: "desc" },
+    });
+    const reusable = openOrders.find((o) => sameOpenOrder(o, rows, wantCouponCode, price.totalPaise, provider.name));
+    if (reusable) return { kind: "reuse" as const, orderId: reusable.id };
+
+    const couponLimits = price.applied === "coupon" && price.coupon ? await lockCoupon(tx, price.coupon.code) : null;
+
+    for (const o of openOrders) {
+      await releaseOrderTx(tx, o.id, ["PENDING_PAYMENT"], "EXPIRED", "EXPIRED", "Superseded by a new checkout");
     }
+
+    if (couponLimits && price.coupon) {
+      await checkCouponUsage(tx, price.coupon.code, userId, now, couponLimits);
+    }
+
     for (const l of byVariantId(rows)) {
       const r = await tx.productVariant.updateMany({ where: { id: l.variantId, stock: { gte: l.quantity } }, data: { stock: { decrement: l.quantity } } });
       if (r.count !== 1) {
@@ -198,7 +260,7 @@ export async function placeOrder(userId: string, input: unknown): Promise<Checko
       }
     }
     const number = await nextOrderNumber(tx);
-    return tx.order.create({
+    const created = await tx.order.create({
       data: {
         number, userId, email: user.email, status: "PENDING_PAYMENT",
         shipName: address.fullName, shipPhone: address.phone, shipLine1: address.line1, shipLine2: address.line2,
@@ -213,8 +275,14 @@ export async function placeOrder(userId: string, input: unknown): Promise<Checko
         events: { create: { type: "CREATED", message: `Order placed for ${formatPaise(price.totalPaise)}` } },
       },
     });
+    return { kind: "created" as const, order: created };
   });
 
+  if (outcome.kind === "reuse") {
+    return waitForCheckoutPayload(outcome.orderId, provider);
+  }
+
+  const order = outcome.order;
   let providerOrderId: string;
   try {
     providerOrderId = (await provider.createOrder({ amountPaise: order.totalPaise, receipt: order.number, notes: { orderId: order.id, number: order.number } })).id;
@@ -249,16 +317,20 @@ export async function restockOrderItems(tx: Tx, orderId: string): Promise<void> 
   }
 }
 
+async function releaseOrderTx(
+  tx: Tx, orderId: string, from: OrderStatus[], to: "CANCELLED" | "EXPIRED", eventType: OrderEventType, message: string, actorId?: string | null,
+): Promise<boolean> {
+  const r = await tx.order.updateMany({ where: { id: orderId, status: { in: from } }, data: { status: to, ...(to === "CANCELLED" ? { cancelledAt: new Date() } : {}) } });
+  if (r.count !== 1) return false;
+  await restockOrderItems(tx, orderId);
+  await addOrderEvent(tx, orderId, eventType, message, actorId);
+  return true;
+}
+
 export async function releaseOrder(
   orderId: string, from: OrderStatus[], to: "CANCELLED" | "EXPIRED", eventType: OrderEventType, message: string, actorId?: string | null,
 ): Promise<boolean> {
-  return db.$transaction(async (tx) => {
-    const r = await tx.order.updateMany({ where: { id: orderId, status: { in: from } }, data: { status: to, ...(to === "CANCELLED" ? { cancelledAt: new Date() } : {}) } });
-    if (r.count !== 1) return false;
-    await restockOrderItems(tx, orderId);
-    await addOrderEvent(tx, orderId, eventType, message, actorId);
-    return true;
-  });
+  return db.$transaction((tx) => releaseOrderTx(tx, orderId, from, to, eventType, message, actorId));
 }
 
 export async function expireStaleOrders(now: Date = new Date()): Promise<number> {
@@ -285,17 +357,57 @@ class ReReserveFailed extends Error {}
 /**
  * Flags an order for attention exactly once: the update only takes effect while `needsAttention`
  * is still false, so two concurrent callers (a webhook and a client verify racing, or a repeated
- * webhook retry) can't both write an ATTENTION event, and `extra` (e.g. `providerPaymentId`) is only
- * ever written by whichever caller wins that transition — never overwritten by a later one.
- * Returns whether this call was the one that flagged it.
+ * webhook retry) can't both write an ATTENTION event. Returns whether this call was the one that
+ * flagged it.
  */
-async function flagAttentionOnce(orderId: string, message: string, extra: { providerPaymentId?: string } = {}): Promise<boolean> {
+async function flagAttentionOnce(orderId: string, message: string): Promise<boolean> {
   return db.$transaction(async (tx) => {
-    const u = await tx.order.updateMany({ where: { id: orderId, needsAttention: false }, data: { needsAttention: true, ...extra } });
+    const u = await tx.order.updateMany({ where: { id: orderId, needsAttention: false }, data: { needsAttention: true } });
     if (u.count !== 1) return false;
     await addOrderEvent(tx, orderId, "ATTENTION", message);
     return true;
   });
+}
+
+/**
+ * Records a payment id against an order (money arrived that the order can no longer account for in
+ * stock) and flags it for attention — each independently exactly-once, so:
+ * - a `providerPaymentId` already on record (e.g. the order's original successful payment, before
+ *   it was cancelled) is never overwritten by a different id that arrives afterwards;
+ * - an order already flagged for something else (e.g. an earlier amount mismatch, which never had a
+ *   payment id) still gets its first real payment id stored, with correct wording — not the old
+ *   "it still flags an earlier payment" text when there wasn't one;
+ * - a different id arriving on an already-flagged, already-identified order is noted once (deduped
+ *   per payment id), not on every webhook retry.
+ */
+async function recordAttentionPayment(orderId: string, paymentId: string, statusLabel: string): Promise<void> {
+  const result = await db.$transaction(async (tx) => {
+    const idWrite = await tx.order.updateMany({ where: { id: orderId, providerPaymentId: null }, data: { providerPaymentId: paymentId } });
+    const flagWrite = await tx.order.updateMany({ where: { id: orderId, needsAttention: false }, data: { needsAttention: true } });
+    const current = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { providerPaymentId: true } });
+    return { stored: idWrite.count === 1, flagged: flagWrite.count === 1, recordedId: current.providerPaymentId };
+  });
+
+  const recordedId = result.recordedId ?? paymentId;
+  const isRecordedPayment = recordedId === paymentId;
+
+  if (result.flagged) {
+    const message = isRecordedPayment
+      ? `Payment ${paymentId} arrived for a ${statusLabel} order. Refund it from the order page.`
+      : `Payment ${paymentId} arrived for a ${statusLabel} order, which is already on record for payment ${recordedId}. Refund ${recordedId} from the order page.`;
+    await addOrderEvent(db, orderId, "ATTENTION", message);
+    return;
+  }
+  if (result.stored) {
+    await addOrderEvent(db, orderId, "NOTE", `Payment ${paymentId} recorded for this ${statusLabel} order. Refund it from the order page.`);
+    return;
+  }
+  if (!isRecordedPayment) {
+    const already = await db.orderEvent.findFirst({ where: { orderId, type: "NOTE", message: { contains: paymentId } } });
+    if (!already) {
+      await addOrderEvent(db, orderId, "NOTE", `Another payment ${paymentId} also arrived for this ${statusLabel} order; it still flags ${recordedId} for refund.`);
+    }
+  }
 }
 
 async function afterPaid(orderId: string, userId: string, items: { variantId: string | null }[]): Promise<void> {
@@ -362,7 +474,7 @@ export async function markOrderPaid(
         const u = await tx.order.updateMany({ where: { id: order.id, status: "EXPIRED" }, data: { ...paid, needsAttention: true } });
         if (u.count !== 1) return false;
         await addOrderEvent(tx, order.id, "PAID", `Payment ${paymentId} received after the order expired (${source})`);
-        await addOrderEvent(tx, order.id, "ATTENTION", "Paid after expiry but some items are no longer in stock. Restock them, or cancel and refund.");
+        await addOrderEvent(tx, order.id, "ATTENTION", "Paid after expiry but some items are no longer in stock. Stock was short — refund or restock manually.");
         return true;
       });
       if (!won) return markOrderPaid(orderId, paymentId, source, opts);
@@ -374,24 +486,10 @@ export async function markOrderPaid(
   }
 
   // CANCELLED (or otherwise terminal, non-paid): money arrived for an order that no longer holds
-  // stock. Flag it once and keep the first payment id — the admin refunds using it. A second,
-  // different payment id landing later (e.g. a duplicate charge) is noted, never used to overwrite it.
-  const flagged = await flagAttentionOnce(
-    order.id,
-    `Payment ${paymentId} arrived for a ${ORDER_STATUS_LABEL[order.status].toLowerCase()} order. Refund it from the order page.`,
-    { providerPaymentId: paymentId },
-  );
-  if (!flagged) {
-    const current = await db.order.findUnique({ where: { id: order.id }, select: { providerPaymentId: true } });
-    if (current && current.providerPaymentId !== paymentId) {
-      await addOrderEvent(
-        db,
-        order.id,
-        "NOTE",
-        `Another payment ${paymentId} also arrived for this ${ORDER_STATUS_LABEL[order.status].toLowerCase()} order; it still flags ${current.providerPaymentId ?? "an earlier payment"} for refund.`,
-      );
-    }
-  }
+  // stock. Records the payment id and flags it — see recordAttentionPayment for exactly what that
+  // guarantees (never overwrites an id already on record; still captures the first real id even if
+  // already flagged for something else; dedupes a repeated different id).
+  await recordAttentionPayment(order.id, paymentId, ORDER_STATUS_LABEL[order.status].toLowerCase());
   return { outcome: "attention", number };
 }
 

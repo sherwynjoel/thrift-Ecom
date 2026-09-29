@@ -87,10 +87,25 @@ describe("placeOrder", () => {
     expect(await stockOf(variant.id)).toBe(5);
   });
 
-  it("supersedes the user's own pending order instead of starving their bag", async () => {
+  it("reuses the user's own pending order on an identical retry instead of creating a duplicate", async () => {
     const { user, variant, address } = await buyer({ qty: 1, stock: 1 });
     const first = await placeOrder(user.id, { addressId: address.id });
     expect(await stockOf(variant.id)).toBe(0);
+    const second = await placeOrder(user.id, { addressId: address.id });
+    expect(second.orderId).toBe(first.orderId);
+    expect(second.number).toBe(first.number);
+    expect(second.providerOrderId).toBe(first.providerOrderId);
+    expect(await db.order.count({ where: { userId: user.id } })).toBe(1);
+    expect(await stockOf(variant.id)).toBe(0);
+    const cart = await db.cartItem.findMany({ where: { cart: { userId: user.id } } });
+    expect(cart).toHaveLength(1);
+  });
+
+  it("supersedes the user's own pending order when the cart changes before retrying", async () => {
+    const { user, variant, address } = await buyer({ qty: 1, stock: 5 });
+    const first = await placeOrder(user.id, { addressId: address.id });
+    expect(await stockOf(variant.id)).toBe(4);
+    await addItem({ userId: user.id }, variant.id, 1);
     const second = await placeOrder(user.id, { addressId: address.id });
     expect(second.number).not.toBe(first.number);
     const firstOrder = await db.order.findUniqueOrThrow({ where: { id: first.orderId } });
@@ -98,9 +113,52 @@ describe("placeOrder", () => {
     const pending = await db.order.findMany({ where: { userId: user.id, status: "PENDING_PAYMENT" } });
     expect(pending).toHaveLength(1);
     expect(pending[0]?.id).toBe(second.orderId);
-    expect(await stockOf(variant.id)).toBe(0);
+    expect(await stockOf(variant.id)).toBe(3);
     const cart = await db.cartItem.findMany({ where: { cart: { userId: user.id } } });
     expect(cart).toHaveLength(1);
+  });
+
+  it("resolves a concurrent same-user double-submit to a single order, decrementing stock once", async () => {
+    const { user, variant, address } = await buyer({ qty: 2, stock: 5 });
+    const [a, b] = await Promise.all([
+      placeOrder(user.id, { addressId: address.id }),
+      placeOrder(user.id, { addressId: address.id }),
+    ]);
+    expect(a.orderId).toBe(b.orderId);
+    expect(a.number).toBe(b.number);
+    expect(a.providerOrderId).toBe(b.providerOrderId);
+    expect(await db.order.count({ where: { userId: user.id } })).toBe(1);
+    expect(await stockOf(variant.id)).toBe(3);
+  });
+
+  it("rolls back a supersede when the new attempt's coupon check fails inside the transaction", async () => {
+    await db.coupon.create({ data: { code: "ONECODE", type: "FLAT", value: 1000, usageLimit: 1 } });
+    const other = await buyer();
+    await placeOrder(other.user.id, { addressId: other.address.id, couponCode: "onecode" }); // consumes the only slot (still PENDING)
+
+    const { user, variant, address } = await buyer({ qty: 1, stock: 5 });
+    const orderA = await placeOrder(user.id, { addressId: address.id }); // no coupon yet
+    await addItem({ userId: user.id }, variant.id, 1); // change the cart so this isn't a pure reuse
+
+    await expect(placeOrder(user.id, { addressId: address.id, couponCode: "onecode" })).rejects.toBeInstanceOf(ValidationError);
+    const a = await db.order.findUniqueOrThrow({ where: { id: orderA.orderId } });
+    expect(a.status).toBe("PENDING_PAYMENT");
+    expect(await stockOf(variant.id)).toBe(4);
+    expect(await db.order.count({ where: { userId: user.id } })).toBe(1);
+  });
+
+  it("lets only one of two concurrent checkouts use a usageLimit:1 coupon", async () => {
+    await db.coupon.create({ data: { code: "ONECODE", type: "FLAT", value: 1000, usageLimit: 1 } });
+    const a = await buyer();
+    const b = await buyer();
+    const results = await Promise.allSettled([
+      placeOrder(a.user.id, { addressId: a.address.id, couponCode: "onecode" }),
+      placeOrder(b.user.id, { addressId: b.address.id, couponCode: "onecode" }),
+    ]);
+    expect(await db.order.count({ where: { couponCode: "ONECODE" } })).toBe(1);
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toBeInstanceOf(ValidationError);
   });
 
   it("lets only one of two concurrent buyers win the last unit", async () => {
@@ -151,6 +209,11 @@ describe("placeOrder", () => {
     expect(await stockOf(variantA.id)).toBe(5);
     expect(await stockOf(variantB.id)).toBe(0);
     expect(await db.order.count()).toBe(0);
+    // If the miss were instead caught by the pre-transaction reconcile (the timing-dependent failure
+    // mode this test guards against), line B would have been deleted from the bag as "sold out".
+    // The in-transaction path never touches the cart, so both lines must still be there.
+    const cart = await db.cartItem.findMany({ where: { cart: { userId: user.id } } });
+    expect(cart.map((c) => c.variantId).sort()).toEqual([variantA.id, variantB.id].sort());
   });
 });
 
@@ -210,6 +273,53 @@ describe("markOrderPaid", () => {
     await cancelOrder(p.orderId, { reason: "test" });
     expect((await markOrderPaid(p.orderId, "pay_c", "webhook")).outcome).toBe("attention");
     expect(await db.order.findUniqueOrThrow({ where: { id: p.orderId } })).toMatchObject({ status: "CANCELLED", needsAttention: true, providerPaymentId: "pay_c" });
+  });
+
+  it("keeps the first payment id on a cancelled order and notes a different later one without overwriting it, once", async () => {
+    const { user, address } = await buyer();
+    const p = await placeOrder(user.id, { addressId: address.id });
+    await cancelOrder(p.orderId, { reason: "test" });
+    expect((await markOrderPaid(p.orderId, "pay_first", "webhook")).outcome).toBe("attention");
+    let o = await db.order.findUniqueOrThrow({ where: { id: p.orderId }, include: { events: true } });
+    expect(o.providerPaymentId).toBe("pay_first");
+    expect(o.events.filter((e) => e.type === "ATTENTION")).toHaveLength(1);
+
+    expect((await markOrderPaid(p.orderId, "pay_second", "webhook")).outcome).toBe("attention");
+    expect((await markOrderPaid(p.orderId, "pay_second", "webhook")).outcome).toBe("attention"); // a retry of the same different id
+    o = await db.order.findUniqueOrThrow({ where: { id: p.orderId }, include: { events: true } });
+    expect(o.providerPaymentId).toBe("pay_first"); // never overwritten
+    expect(o.events.filter((e) => e.type === "ATTENTION")).toHaveLength(1); // not duplicated
+    expect(o.events.filter((e) => e.type === "NOTE")).toHaveLength(1); // deduped per payment id
+  });
+
+  it("still records the first real payment id when an order was already flagged for an amount mismatch", async () => {
+    const { user, address } = await buyer();
+    const p = await placeOrder(user.id, { addressId: address.id });
+    expect((await markOrderPaid(p.orderId, "pay_wrong_amount", "webhook", { amountPaise: 100 })).outcome).toBe("amount_mismatch");
+    await cancelOrder(p.orderId, { reason: "test" });
+    expect((await markOrderPaid(p.orderId, "pay_real", "webhook")).outcome).toBe("attention");
+    const o = await db.order.findUniqueOrThrow({ where: { id: p.orderId }, include: { events: true } });
+    expect(o.providerPaymentId).toBe("pay_real");
+    const note = o.events.find((e) => e.type === "NOTE");
+    expect(note?.message).toContain("pay_real");
+    expect(note?.message).toContain("recorded");
+  });
+
+  it("lets a late payment on a superseded order re-reserve stock through the normal EXPIRED path", async () => {
+    const { user, variant, address } = await buyer({ qty: 1, stock: 5 });
+    const orderA = await placeOrder(user.id, { addressId: address.id });
+    await addItem({ userId: user.id }, variant.id, 1);
+    const orderB = await placeOrder(user.id, { addressId: address.id });
+    expect(orderB.number).not.toBe(orderA.number);
+    expect((await db.order.findUniqueOrThrow({ where: { id: orderA.orderId } })).status).toBe("EXPIRED");
+    expect(await stockOf(variant.id)).toBe(3);
+
+    expect((await markOrderPaid(orderA.orderId, "pay_late", "webhook")).outcome).toBe("paid");
+    expect(await stockOf(variant.id)).toBe(2);
+    const a = await db.order.findUniqueOrThrow({ where: { id: orderA.orderId } });
+    expect(a).toMatchObject({ status: "PAID", needsAttention: false });
+    const b = await db.order.findUniqueOrThrow({ where: { id: orderB.orderId } });
+    expect(b.status).toBe("PENDING_PAYMENT");
   });
 
   it("does not fabricate phantom stock when a 'needs attention' late payment is later cancelled", async () => {
