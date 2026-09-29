@@ -1,0 +1,57 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { LocalDiskStorage } from "@/server/adapters/storage/local-disk";
+
+const root = mkdtempSync(join(tmpdir(), "admin-img-"));
+const storage = new LocalDiskStorage(root, "/api/uploads");
+vi.mock("@/server/adapters/storage", async (orig) => ({ ...(await orig<typeof import("@/server/adapters/storage")>()), getStorage: () => storage }));
+
+import { db } from "@/server/db";
+import { resetDb } from "../helpers/db";
+import { createProduct } from "../helpers/fixtures";
+import { addProductImages, deleteProductImage, reorderProductImages, updateProductImage } from "@/server/services/admin-images";
+import { ValidationError } from "@/server/errors";
+import { existsSync } from "node:fs";
+
+const png = () => new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])], "a.png", { type: "image/png" });
+const gif = () => new File([new Uint8Array([0x47, 0x49, 0x46, 0x38, 0, 0, 0, 0, 0, 0, 0, 0])], "a.gif", { type: "image/gif" });
+
+describe("admin images service", () => {
+  beforeEach(resetDb);
+
+  it("appends uploaded images after existing ones and stores the files", async () => {
+    const p = await createProduct({ images: [{ url: "/seed/x.svg" }] });
+    const added = await addProductImages(p.id, [png(), png()]);
+    expect(added.map((i) => i.sortOrder)).toEqual([1, 2]);
+    expect(added[0].url).toMatch(new RegExp(`^/api/uploads/products/${p.id}/`));
+    expect(existsSync(join(root, added[0].url.replace("/api/uploads/", "")))).toBe(true);
+  });
+
+  it("rejects bad files and count limits without saving anything", async () => {
+    const p = await createProduct({ images: [] });
+    await expect(addProductImages(p.id, [png(), gif()])).rejects.toBeInstanceOf(ValidationError);
+    expect(await db.productImage.count({ where: { productId: p.id } })).toBe(0);
+    await expect(addProductImages(p.id, Array.from({ length: 11 }, png))).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("updates alt and color tag, reorders, and deletes with file cleanup", async () => {
+    const p = await createProduct({ images: [] });
+    const [a, b] = await addProductImages(p.id, [png(), png()]);
+    expect((await updateProductImage(a.id, { alt: "Front", colorName: "Black" })).colorName).toBe("Black");
+    expect((await updateProductImage(a.id, { alt: "Front", colorName: null })).colorName).toBeNull();
+    await reorderProductImages(p.id, [b.id, a.id]);
+    const order = await db.productImage.findMany({ where: { productId: p.id }, orderBy: { sortOrder: "asc" } });
+    expect(order.map((i) => i.id)).toEqual([b.id, a.id]);
+    await expect(reorderProductImages(p.id, [a.id])).rejects.toBeInstanceOf(ValidationError);
+    await deleteProductImage(a.id);
+    expect(existsSync(join(root, a.url.replace("/api/uploads/", "")))).toBe(false);
+    expect(await db.productImage.count({ where: { productId: p.id } })).toBe(1);
+  });
+
+  it("does not try to delete seed files that the storage adapter did not create", async () => {
+    const p = await createProduct({ images: [{ url: "/seed/keep.svg" }] });
+    await expect(deleteProductImage(p.images[0].id)).resolves.toEqual({ productId: p.id });
+  });
+});

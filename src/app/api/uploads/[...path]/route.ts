@@ -13,7 +13,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ path: string[]
   if (!type) return new Response("Not found", { status: 404 });
   try {
     const bytes = await readFile(full);
-    return new Response(bytes, { headers: { "Content-Type": type, "Cache-Control": "public, max-age=31536000, immutable" } });
+    return new Response(bytes, {
+      headers: {
+        "Content-Type": type,
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; img-src 'self'; sandbox",
+      },
+    });
   } catch {
     return new Response("Not found", { status: 404 });
   }

@@ -31,3 +31,11 @@ export async function storeImage(file: File, prefix: string): Promise<{ url: str
   const { url } = await getStorage().put(key, bytes, contentType);
   return { url, key };
 }
+
+/** Returns the storage key for URLs produced by the active storage adapter; null for anything else (e.g. /seed/*.svg). */
+export function uploadKeyFromUrl(url: string): string | null {
+  const prefix = getStorage().getPublicUrl("");
+  if (!url.startsWith(prefix)) return null;
+  const key = url.slice(prefix.length);
+  return key && !key.includes("..") ? key : null;
+}
