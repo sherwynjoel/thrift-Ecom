@@ -1,5 +1,5 @@
 import { db } from "@/server/db";
-import type { Fit, ProductStatus } from "@prisma/client";
+import type { Fit, OrderStatus, ProductStatus } from "@prisma/client";
 import { slugify } from "@/lib/slug";
 
 let counter = 0;
@@ -94,4 +94,35 @@ export async function createProduct(
 
 export async function linkProductToCollection(collectionId: string, productId: string, sortOrder: number) {
   await db.productCollection.create({ data: { collectionId, productId, sortOrder } });
+}
+
+export async function createOrderRow(
+  userId: string,
+  over: Partial<{ status: OrderStatus; couponCode: string | null; offerLabel: string | null; totalPaise: number; paidAt: Date | null; createdAt: Date; number: string; shipName: string; shipPhone: string; shipPincode: string; needsAttention: boolean }> = {},
+) {
+  const n = next();
+  const total = over.totalPaise ?? 59900;
+  return db.order.create({
+    data: {
+      number: over.number ?? `TEST-${n}-${Date.now()}`,
+      userId,
+      email: `buyer${n}@example.test`,
+      status: over.status ?? "PAID",
+      needsAttention: over.needsAttention ?? false,
+      shipName: over.shipName ?? "Asha Rao",
+      shipPhone: over.shipPhone ?? "9876543210",
+      shipLine1: "12 MG Road",
+      shipCity: "Bengaluru",
+      shipState: "Karnataka",
+      shipPincode: over.shipPincode ?? "560001",
+      subtotalPaise: total,
+      totalPaise: total,
+      couponCode: over.couponCode ?? null,
+      offerLabel: over.offerLabel ?? null,
+      paymentProvider: "mock",
+      paidAt: over.paidAt === undefined ? new Date() : over.paidAt,
+      createdAt: over.createdAt,
+      expiresAt: new Date(Date.now() + 30 * 60_000),
+    },
+  });
 }
