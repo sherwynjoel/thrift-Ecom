@@ -19,3 +19,17 @@ test("hero CTA goes to new drops", async ({ page }) => {
   await page.getByTestId("hero-cta").click();
   await expect(page).toHaveURL(/\/collections\/new-drops/);
 });
+
+test("home has no hydration errors", async ({ page }) => {
+  const messages: string[] = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") messages.push(msg.text());
+  });
+  page.on("pageerror", (err) => {
+    messages.push(err.message);
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("hero")).toBeVisible();
+  const hydrationErrors = messages.filter((m) => /hydrat/i.test(m));
+  expect(hydrationErrors).toEqual([]);
+});
