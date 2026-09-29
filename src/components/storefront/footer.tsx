@@ -37,7 +37,7 @@ export function Footer() {
         <span>© {new Date().getFullYear()} {BRAND.name}. Made in India.</span>
         <span className="hidden sm:inline" aria-hidden="true">·</span>
         <a href={BRAND.poweredBy.url} target="_blank" rel="noreferrer" className="hover:text-text" data-testid="powered-by">
-          Powered by {BRAND.poweredBy.name}
+          Powered by <span className="font-semibold text-brand">{BRAND.poweredBy.name}</span>
         </a>
       </div>
     </footer>
