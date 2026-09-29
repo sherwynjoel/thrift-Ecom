@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ---- Brand tokens (spec section 4) ---- */
 :root {
   --bg: #0A0A0A;
@@ -14,6 +16,23 @@
   --danger: #FF4D4D;
   --radius: 2px;
   --marquee-duration: 30s;
+
+  /* ---- Raw shadcn color aliases (components reference these var names directly, e.g. sonner.tsx, button.tsx) ---- */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--text);
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-ink);
+  --secondary: var(--surface-raised);
+  --secondary-foreground: var(--text);
+  --muted: var(--surface);
+  --muted-foreground: var(--text-muted);
+  --destructive: var(--danger);
+  --input: var(--border);
+  --ring: var(--accent);
 }
 
 /* ---- Tailwind theme: brand utilities + shadcn semantics on the same palette ---- */
