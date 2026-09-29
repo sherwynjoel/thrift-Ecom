@@ -1,4 +1,5 @@
 export { LenisProvider } from "./lenis-provider";
+export { ReducedMotionConfig } from "./motion-config";
 export { Reveal } from "./reveal";
 export { Marquee } from "./marquee";
 export { Parallax } from "./parallax";
