@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { AccountNav } from "@/components/storefront/account/account-nav";
 import { PasswordForm } from "@/components/storefront/account/password-form";
 import { ProfileForm } from "@/components/storefront/account/profile-form";
 import { SignOutButton } from "@/components/storefront/account/sign-out-button";
@@ -24,6 +25,7 @@ export default async function AccountPage() {
         </div>
         <SignOutButton />
       </div>
+      <AccountNav />
       <Tabs defaultValue="orders">
         <TabsList className="bg-surface">
           <TabsTrigger value="orders">Orders</TabsTrigger>
