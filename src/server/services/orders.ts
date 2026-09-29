@@ -55,11 +55,34 @@ export function toPricingLines(rows: CheckoutLineRow[]): PricingLine[] {
   return rows.map((l) => ({ unitPricePaise: unitPriceOf(l), quantity: l.quantity, collectionIds: l.variant.product.collections.map((c) => c.collectionId) }));
 }
 
-export async function reconcileCartStock(rows: CheckoutLineRow[]): Promise<{ rows: CheckoutLineRow[]; issues: StockIssue[] }> {
+/**
+ * Units of each variant held by `userId`'s own unexpired PENDING_PAYMENT orders that still reserve
+ * stock. That stock is effectively the user's: a new checkout supersedes those orders and releases it.
+ */
+async function ownPendingHolds(userId: string, variantIds: string[]): Promise<Map<string, number>> {
+  if (variantIds.length === 0) return new Map();
+  const held = await db.orderItem.groupBy({
+    by: ["variantId"],
+    where: {
+      variantId: { in: variantIds },
+      order: { userId, status: "PENDING_PAYMENT", stockReserved: true, expiresAt: { gt: new Date() } },
+    },
+    _sum: { quantity: true },
+  });
+  return new Map(held.flatMap((h) => (h.variantId ? [[h.variantId, h._sum.quantity ?? 0] as const] : [])));
+}
+
+/**
+ * Trims cart lines to what is in stock. With `userId`, quantities reserved by that user's own open
+ * pending orders count as available to them, so returning to checkout after dismissing the payment
+ * window does not strip the bag of the very units their unpaid order is holding.
+ */
+export async function reconcileCartStock(rows: CheckoutLineRow[], userId?: string): Promise<{ rows: CheckoutLineRow[]; issues: StockIssue[] }> {
   const kept: CheckoutLineRow[] = [];
   const issues: StockIssue[] = [];
+  const holds = userId ? await ownPendingHolds(userId, rows.map((l) => l.variantId)) : new Map<string, number>();
   for (const l of rows) {
-    const available = l.variant.product.status === "ACTIVE" ? Math.max(0, l.variant.stock) : 0;
+    const available = l.variant.product.status === "ACTIVE" ? Math.max(0, l.variant.stock) + (holds.get(l.variantId) ?? 0) : 0;
     if (l.quantity <= available) {
       kept.push(l);
       continue;

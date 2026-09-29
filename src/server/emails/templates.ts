@@ -21,7 +21,7 @@ function safeHttpUrl(u: string | null): string | null {
 }
 
 function layout(heading: string, body: string): string {
-  return `<!doctype html><html><body style="margin:0;background:#f4f4f2;font-family:Arial,Helvetica,sans-serif;color:#111">
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;background:#f4f4f2;font-family:Arial,Helvetica,sans-serif;color:#111">
 <div style="max-width:560px;margin:0 auto;padding:24px">
 <p style="font-size:20px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;margin:0 0 16px">${e(BRAND.name)}</p>
 <div style="background:#fff;border-radius:8px;padding:24px">

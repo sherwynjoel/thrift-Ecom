@@ -5,10 +5,11 @@ import { CartPanel } from "@/components/storefront/cart-panel";
 import { Footer } from "@/components/storefront/footer";
 import { Header } from "@/components/storefront/header";
 import { auth } from "@/server/auth";
-import { getCurrentCart } from "@/server/cart-ref";
+import { getCurrentCart, getCurrentCartPreview } from "@/server/cart-ref";
 
 export default async function StorefrontLayout({ children }: { children: React.ReactNode }) {
   const [session, cart] = await Promise.all([auth(), getCurrentCart()]);
+  const preview = cart.itemCount > 0 ? await getCurrentCartPreview() : null;
   return (
     <ReducedMotionConfig>
       <LenisProvider>
@@ -16,7 +17,7 @@ export default async function StorefrontLayout({ children }: { children: React.R
         <main className="min-h-[70dvh]">{children}</main>
         <Footer />
         <CartDrawer itemCount={cart.itemCount}>
-          <CartPanel cart={cart} variant="drawer" />
+          <CartPanel cart={cart} variant="drawer" preview={preview} />
         </CartDrawer>
       </LenisProvider>
     </ReducedMotionConfig>

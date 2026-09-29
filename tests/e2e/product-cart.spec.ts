@@ -32,17 +32,15 @@ test("color swatch switches the gallery", async ({ page }) => {
   await expect.poll(async () => page.getByTestId("gallery").locator("img").first().getAttribute("src")).not.toBe(first);
 });
 
-test("checkout placeholder shows the bag summary", async ({ page }) => {
+test("checkout asks guests to log in and keeps the destination", async ({ page }) => {
   await addFirstProductToBag(page);
   await page.goto("/checkout");
-  await expect(page.getByTestId("checkout-placeholder")).toBeVisible();
-  const itemsRow = page.locator("dl > div").filter({ hasText: "Items" });
-  await expect(itemsRow.locator("dd")).not.toHaveText("0");
+  await expect(page).toHaveURL(/\/login\?next=%2Fcheckout/);
 });
 
 test("clicking checkout in the drawer navigates and closes the drawer", async ({ page }) => {
   await addFirstProductToBag(page);
   await page.getByTestId("cart-drawer").getByRole("button", { name: /^checkout$/i }).click();
-  await expect(page).toHaveURL(/\/checkout/);
+  await expect(page).toHaveURL(/(\/checkout|next=%2Fcheckout)/);
   await expect(page.getByTestId("cart-drawer")).toBeHidden();
 });

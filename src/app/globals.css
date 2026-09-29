@@ -99,6 +99,10 @@
   * { @apply border-border; }
   html { color-scheme: dark; scroll-behavior: auto; }
   body { @apply bg-bg text-text font-sans antialiased; }
+  /* Pages with a fixed mobile action bar (checkout) reserve room for it so the footer is never covered. */
+  @media (width < 64rem) {
+    body:has([data-sticky-bar]) { padding-bottom: calc(7.5rem + env(safe-area-inset-bottom)); }
+  }
   h1, h2, h3, .display { @apply font-display uppercase tracking-tight; }
   ::selection { background: var(--accent); color: var(--accent-ink); }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
