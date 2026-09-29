@@ -55,14 +55,16 @@ export function limitCouponQuotes(userId: string): void {
 }
 
 /**
- * React key for the checkout form: changes whenever the server-side bag or its price changes, so a
- * `router.refresh()` after a failed Pay (stock moved, offer ended, coupon rejected) remounts the form
- * with the fresh server quote instead of leaving a stale total on the Pay button.
+ * React key for the checkout form: changes only when the server-side bag itself changes (an item's
+ * price, quantity or presence) — never for the price/coupon summary alone. A `router.refresh()` after
+ * a failed Pay remounts the form when the bag genuinely changed (stock moved, an item's price
+ * changed), but a coupon-only price change (the code just hit its usage limit) is already corrected
+ * client-side by `pay()`'s own fixup (clear the code, re-quote); keying on price too would remount the
+ * form for that case and discard the shopper's chosen (possibly non-default) address and any typed
+ * note — a wrong-address risk, not just a lost draft (see N1).
  */
-export function checkoutFormKey(view: Pick<CheckoutView, "lines" | "price">): string {
-  const lines = view.lines.map((l) => `${l.variantId}:${l.quantity}:${l.unitPricePaise}`).join(",");
-  const p = view.price;
-  return `${lines}|${p.totalPaise}|${p.discountPaise}|${p.applied ?? "none"}|${p.coupon?.code ?? ""}`;
+export function checkoutFormKey(view: Pick<CheckoutView, "lines">): string {
+  return view.lines.map((l) => `${l.variantId}:${l.quantity}:${l.unitPricePaise}`).join(",");
 }
 
 export async function quoteForUser(userId: string, couponCode: string | null): Promise<PriceResult> {

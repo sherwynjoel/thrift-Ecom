@@ -1,4 +1,4 @@
-import type { OrderStatus, Prisma } from "@prisma/client";
+import { Prisma, type OrderStatus } from "@prisma/client";
 import { z } from "zod";
 import { db } from "@/server/db";
 import { zodFieldErrors } from "@/server/action-result";
@@ -125,20 +125,61 @@ async function lockUser(tx: Tx, userId: string): Promise<void> {
 
 /**
  * True when an open order IS this checkout attempt: same items (variantId + quantity), same coupon,
- * same total, under the same provider. A retry (double-click Pay, two tabs, a client retry after a
- * dropped response) that still matches its still-open order should hand back that same order rather
- * than superseding it — superseding a payable order is itself the bug this replaces (see N1).
+ * same total, same delivery address and note, under the same provider. A retry (double-click Pay,
+ * two tabs, a client retry after a dropped response) that still matches its still-open order should
+ * hand back that same order rather than superseding it — superseding a payable order is itself the
+ * bug this replaces (see N1). The address/note check matters: without it, picking a different
+ * address after dismissing payment and paying again would ship to the *old* address (see I-A).
  */
 function sameOpenOrder(
-  o: { totalPaise: number; couponCode: string | null; paymentProvider: string; items: { variantId: string | null; quantity: number }[] },
+  o: {
+    totalPaise: number; couponCode: string | null; paymentProvider: string; customerNote: string | null;
+    shipName: string; shipPhone: string; shipLine1: string; shipLine2: string | null; shipLandmark: string | null;
+    shipCity: string; shipState: string; shipPincode: string;
+    items: { variantId: string | null; quantity: number }[];
+  },
   rows: CheckoutLineRow[], couponCode: string | null, totalPaise: number, providerName: string,
+  address: { fullName: string; phone: string; line1: string; line2: string | null; landmark: string | null; city: string; state: string; pincode: string },
+  customerNote: string | null,
 ): boolean {
   if (o.paymentProvider !== providerName || o.totalPaise !== totalPaise) return false;
   if ((o.couponCode ?? null) !== couponCode) return false;
+  if ((o.customerNote ?? null) !== customerNote) return false;
+  if (o.shipName !== address.fullName || o.shipPhone !== address.phone) return false;
+  if (o.shipLine1 !== address.line1 || (o.shipLine2 ?? null) !== (address.line2 ?? null)) return false;
+  if ((o.shipLandmark ?? null) !== (address.landmark ?? null)) return false;
+  if (o.shipCity !== address.city || o.shipState !== address.state || o.shipPincode !== address.pincode) return false;
   const want = new Map(rows.map((r) => [r.variantId, r.quantity]));
   const have = o.items.filter((i) => i.variantId !== null);
   if (have.length !== want.size) return false;
   return have.every((it) => want.get(it.variantId!) === it.quantity);
+}
+
+const STALE_PROVIDER_ORDER_MS = 10_000;
+const REUSE_MIN_REMAINING_MS = 5 * 60 * 1000;
+
+/**
+ * Whether an open order is even eligible to be reused, independent of whether it matches this cart:
+ * - `stockReserved` must be true (M-2; every path that flips it false also moves status off
+ *   PENDING_PAYMENT in the same transaction today, so this is a defensive backstop, not load-bearing).
+ * - a `providerOrderId` still null more than a few seconds after creation means the request that
+ *   created it likely died before finishing (crash, timeout) — reusing it would poll and eventually
+ *   fail every retry until it expires (I-B). Supersede it instead.
+ * - less than a few minutes of `expiresAt` left is too little runway to hand back safely — supersede
+ *   for a fresh 30-minute window instead of reusing something that might expire mid-payment (M-3).
+ */
+function canReuseOrder(o: { providerOrderId: string | null; createdAt: Date; expiresAt: Date; stockReserved: boolean }, now: Date): boolean {
+  if (!o.stockReserved) return false;
+  if (o.providerOrderId === null && now.getTime() - o.createdAt.getTime() > STALE_PROVIDER_ORDER_MS) return false;
+  if (o.expiresAt.getTime() - now.getTime() <= REUSE_MIN_REMAINING_MS) return false;
+  return true;
+}
+
+/** Locks the given variant rows in one globally-sorted pass, up front, before any restock or decrement touches them (see I-C). */
+async function lockVariants(tx: Tx, variantIds: Iterable<string>): Promise<void> {
+  const ids = [...new Set(variantIds)].sort();
+  if (ids.length === 0) return;
+  await tx.$queryRaw`SELECT id FROM "ProductVariant" WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
 }
 
 /**
@@ -152,7 +193,7 @@ function sameOpenOrder(
 async function waitForCheckoutPayload(orderId: string, provider: PaymentProvider, timeoutMs = 3000): Promise<CheckoutPayload> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const o = await db.order.findUnique({ where: { id: orderId }, select: { number: true, totalPaise: true, providerOrderId: true, shipName: true, shipPhone: true, email: true } });
+    const o = await db.order.findUnique({ where: { id: orderId }, select: { status: true, number: true, totalPaise: true, providerOrderId: true, shipName: true, shipPhone: true, email: true } });
     if (!o) throw new NotFoundError("Order");
     if (o.providerOrderId) {
       return {
@@ -160,6 +201,9 @@ async function waitForCheckoutPayload(orderId: string, provider: PaymentProvider
         providerOrderId: o.providerOrderId, keyId: provider.publicKey, prefill: { name: o.shipName, email: o.email, contact: o.shipPhone },
       };
     }
+    // The sibling that created this order failed to start payment for it and released it (M-1) —
+    // stop polling immediately instead of waiting out the full timeout to say something misleading.
+    if (o.status !== "PENDING_PAYMENT") throw new PaymentError("Could not start the payment for this order. Please try again.");
     if (Date.now() >= deadline) throw new ConflictError("This order is still being set up. Please try again in a moment.");
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
@@ -226,6 +270,7 @@ export async function placeOrder(userId: string, input: unknown): Promise<Checko
 
   const provider = getPaymentProvider();
   const wantCouponCode = price.applied === "coupon" && price.coupon ? price.coupon.code : null;
+  const wantNote = customerNote?.trim() || null;
 
   const outcome = await db.$transaction(async (tx) => {
     await lockUser(tx, userId);
@@ -239,10 +284,18 @@ export async function placeOrder(userId: string, input: unknown): Promise<Checko
       include: { items: true },
       orderBy: { createdAt: "desc" },
     });
-    const reusable = openOrders.find((o) => sameOpenOrder(o, rows, wantCouponCode, price.totalPaise, provider.name));
+    const reusable = openOrders.find((o) => canReuseOrder(o, now) && sameOpenOrder(o, rows, wantCouponCode, price.totalPaise, provider.name, address, wantNote));
     if (reusable) return { kind: "reuse" as const, orderId: reusable.id };
 
     const couponLimits = price.applied === "coupon" && price.coupon ? await lockCoupon(tx, price.coupon.code) : null;
+
+    // Lock every variant this transaction will touch — the superseded orders' items and the new
+    // cart's — in one globally-sorted pass before restocking or decrementing anything (I-C). Without
+    // this, restocking (sorted within the old orders) and decrementing (sorted within the new cart)
+    // are two independently-sorted passes that can lock the same two variants in opposite order
+    // across two concurrent checkouts and deadlock.
+    const oldVariantIds = openOrders.flatMap((o) => o.items.flatMap((i) => (i.variantId ? [i.variantId] : [])));
+    await lockVariants(tx, [...oldVariantIds, ...rows.map((l) => l.variantId)]);
 
     for (const o of openOrders) {
       await releaseOrderTx(tx, o.id, ["PENDING_PAYMENT"], "EXPIRED", "EXPIRED", "Superseded by a new checkout");

@@ -6,10 +6,12 @@ import { Button } from "@/components/ui/button";
 
 /**
  * Re-renders the server page every `intervalMs` (up to `maxTries` times) while a payment is being
- * confirmed. Once it gives up it renders `fallback` (e.g. Retry payment) plus a "Check again" button
- * that runs another round, so the page never ends as a spinner with no way forward.
+ * confirmed, showing `children` (e.g. a spinner and "this takes a few seconds" copy) meanwhile. Once
+ * it gives up, `children` is replaced by `fallback` (e.g. "still waiting?" copy) plus a "Check again"
+ * button that runs another round — so the page never ends up showing a spinner that stopped meaning
+ * anything alongside fallback copy that contradicts it.
  */
-export function AutoRefresh({ intervalMs = 3000, maxTries = 10, fallback }: { intervalMs?: number; maxTries?: number; fallback?: React.ReactNode }) {
+export function AutoRefresh({ intervalMs = 3000, maxTries = 10, children, fallback }: { intervalMs?: number; maxTries?: number; children?: React.ReactNode; fallback?: React.ReactNode }) {
   const router = useRouter();
   const [round, setRound] = useState(0);
   const [exhausted, setExhausted] = useState(false);
@@ -27,7 +29,8 @@ export function AutoRefresh({ intervalMs = 3000, maxTries = 10, fallback }: { in
     return () => window.clearInterval(id);
   }, [router, intervalMs, maxTries, round]);
 
-  if (!exhausted || fallback === undefined) return null;
+  if (!exhausted) return <>{children}</>;
+  if (fallback === undefined) return null;
   return (
     <div className="space-y-3" data-testid="confirming-fallback">
       {fallback}

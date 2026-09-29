@@ -172,13 +172,19 @@ describe("payment failure events (review M4) and missing amounts (M6)", () => {
   });
 });
 
-describe("checkout form key (review I1)", () => {
-  it("changes when the server price changes even if the bag lines do not", () => {
-    const lines = [{ variantId: "v1", productName: "T", productSlug: "t", imageUrl: null, size: "M", colorName: "Black", unitPricePaise: 59900, quantity: 2, lineTotalPaise: 119800 }];
-    const base = { subtotalPaise: 119800, offer: null, coupon: null, applied: null, discountPaise: 0, shippingPaise: 0, totalPaise: 119800 } as const;
-    const withOffer = { ...base, offer: { label: "Any 2", discountPaise: 19900 }, applied: "offer" as const, discountPaise: 19900, totalPaise: 99900 };
-    expect(checkoutFormKey({ lines, price: base })).toBe(checkoutFormKey({ lines, price: { ...base } }));
-    expect(checkoutFormKey({ lines, price: base })).not.toBe(checkoutFormKey({ lines, price: withOffer }));
-    expect(checkoutFormKey({ lines, price: base })).not.toBe(checkoutFormKey({ lines: [{ ...lines[0], quantity: 1 }], price: base }));
+describe("checkout form key (review I1, N1)", () => {
+  const lines = [{ variantId: "v1", productName: "T", productSlug: "t", imageUrl: null, size: "M", colorName: "Black", unitPricePaise: 59900, quantity: 2, lineTotalPaise: 119800 }];
+  const base = { subtotalPaise: 119800, offer: null, coupon: null, applied: null, discountPaise: 0, shippingPaise: 0, totalPaise: 119800 } as const;
+  const withOffer = { ...base, offer: { label: "Any 2", discountPaise: 19900 }, applied: "offer" as const, discountPaise: 19900, totalPaise: 99900 };
+
+  it("stays the same when only the price changes, so a coupon-only price change after a failed Pay does not remount the form and lose the shopper's chosen address or note (N1)", () => {
+    const viewA = { lines, price: base };
+    const viewB = { lines, price: withOffer };
+    expect(checkoutFormKey(viewA)).toBe(checkoutFormKey(viewB));
+    expect(checkoutFormKey({ lines })).toBe(checkoutFormKey({ lines: [...lines] }));
+  });
+
+  it("changes when the bag lines themselves change", () => {
+    expect(checkoutFormKey({ lines })).not.toBe(checkoutFormKey({ lines: [{ ...lines[0], quantity: 1 }] }));
   });
 });

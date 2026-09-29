@@ -215,6 +215,110 @@ describe("placeOrder", () => {
     const cart = await db.cartItem.findMany({ where: { cart: { userId: user.id } } });
     expect(cart.map((c) => c.variantId).sort()).toEqual([variantA.id, variantB.id].sort());
   });
+
+  it("supersedes instead of reusing when the delivery address changes between attempts", async () => {
+    const { user, address } = await buyer({ qty: 1, stock: 5 });
+    const first = await placeOrder(user.id, { addressId: address.id });
+    const otherAddress = await createAddress(user.id, { ...ADDRESS, fullName: "Someone Else", line1: "99 Other Road" });
+    const second = await placeOrder(user.id, { addressId: otherAddress.id });
+    expect(second.number).not.toBe(first.number);
+    const firstOrder = await db.order.findUniqueOrThrow({ where: { id: first.orderId } });
+    expect(firstOrder.status).toBe("EXPIRED");
+    const secondOrder = await db.order.findUniqueOrThrow({ where: { id: second.orderId } });
+    expect(secondOrder).toMatchObject({ status: "PENDING_PAYMENT", shipName: "Someone Else", shipLine1: "99 Other Road" });
+  });
+
+  it("supersedes instead of reusing when only the note changes between attempts", async () => {
+    const { user, address } = await buyer({ qty: 1, stock: 5 });
+    const first = await placeOrder(user.id, { addressId: address.id });
+    const second = await placeOrder(user.id, { addressId: address.id, customerNote: "Leave at the door" });
+    expect(second.number).not.toBe(first.number);
+    expect((await db.order.findUniqueOrThrow({ where: { id: first.orderId } })).status).toBe("EXPIRED");
+    expect((await db.order.findUniqueOrThrow({ where: { id: second.orderId } })).customerNote).toBe("Leave at the door");
+  });
+
+  it("supersedes (never reuses) a stale pending order whose payment never started", async () => {
+    const { user, address } = await buyer({ qty: 1, stock: 5 });
+    const first = await placeOrder(user.id, { addressId: address.id });
+    // Simulates the request that created it dying between the transaction commit and the
+    // provider.createOrder()/providerOrderId update (serverless kill, DB blip) — the order is stuck
+    // PENDING_PAYMENT with no providerOrderId, old enough that it can no longer be the one still
+    // legitimately mid-flight.
+    await db.order.update({ where: { id: first.orderId }, data: { providerOrderId: null, createdAt: new Date(Date.now() - 11_000) } });
+    const second = await placeOrder(user.id, { addressId: address.id });
+    expect(second.number).not.toBe(first.number);
+    expect(second.providerOrderId).toMatch(/^mock_order_/);
+    expect((await db.order.findUniqueOrThrow({ where: { id: first.orderId } })).status).toBe("EXPIRED");
+  });
+
+  it("stops waiting for a reused order once its creator's payment start fails, instead of waiting out the poll timeout", async () => {
+    const { user, address } = await buyer({ qty: 1, stock: 5 });
+    const spy = vi.spyOn(MockProvider.prototype, "createOrder").mockRejectedValueOnce(new Error("provider down"));
+    const startedAt = Date.now();
+    const results = await Promise.allSettled([
+      placeOrder(user.id, { addressId: address.id }),
+      placeOrder(user.id, { addressId: address.id }),
+    ]);
+    const elapsedMs = Date.now() - startedAt;
+    spy.mockRestore();
+    expect(results.every((r) => r.status === "rejected")).toBe(true);
+    // Well under the 3s poll timeout — proves the reuser bailed out on seeing the order leave
+    // PENDING_PAYMENT rather than silently waiting the whole window out.
+    expect(elapsedMs).toBeLessThan(2500);
+    expect(await db.order.count({ where: { userId: user.id } })).toBe(1);
+    expect((await db.order.findFirstOrThrow({ where: { userId: user.id } })).status).toBe("CANCELLED");
+  });
+
+  it("never reuses a pending order whose stock was already released (defensive stockReserved check)", async () => {
+    const { user, address } = await buyer({ qty: 1, stock: 5 });
+    const first = await placeOrder(user.id, { addressId: address.id });
+    await db.order.update({ where: { id: first.orderId }, data: { stockReserved: false } });
+    const second = await placeOrder(user.id, { addressId: address.id });
+    expect(second.number).not.toBe(first.number);
+    expect((await db.order.findUniqueOrThrow({ where: { id: first.orderId } })).status).toBe("EXPIRED");
+  });
+
+  it("supersedes instead of reusing an open order with too little time left before it expires", async () => {
+    const { user, address } = await buyer({ qty: 1, stock: 5 });
+    const first = await placeOrder(user.id, { addressId: address.id });
+    await db.order.update({ where: { id: first.orderId }, data: { expiresAt: new Date(Date.now() + 2 * 60_000) } });
+    const second = await placeOrder(user.id, { addressId: address.id });
+    expect(second.number).not.toBe(first.number);
+    expect((await db.order.findUniqueOrThrow({ where: { id: first.orderId } })).status).toBe("EXPIRED");
+  });
+
+  it("locks overlapping variants in one sorted pass so a superseded order and a concurrent overlapping checkout don't deadlock", async () => {
+    // A's id sorts before B's (created first) so a naive independent-pass ordering would have one
+    // transaction touch [B, A] (restock the old order's B, then decrement the new cart's A) while
+    // this concurrent one touches [A, B] (decrement A then B) — opposite orders over the same rows.
+    const productA = await createProduct({ variants: [{ size: "M", colorName: "Black", stock: 5 }] });
+    const variantA = productA.variants[0]!;
+    const productB = await createProduct({ variants: [{ size: "L", colorName: "White", stock: 5 }] });
+    const variantB = productB.variants[0]!;
+
+    const user = await createUser();
+    const address = await createAddress(user.id, ADDRESS);
+    await addItem({ userId: user.id }, variantB.id, 1);
+    const first = await placeOrder(user.id, { addressId: address.id }); // holds only B
+    await db.cartItem.deleteMany({ where: { cart: { userId: user.id } } });
+    await addItem({ userId: user.id }, variantA.id, 1); // retry's cart is now only A -> old={B}, new={A}
+
+    const other = await createUser();
+    const otherAddress = await createAddress(other.id, ADDRESS);
+    await addItem({ userId: other.id }, variantA.id, 1);
+    await addItem({ userId: other.id }, variantB.id, 1); // fresh overlapping checkout: new={A,B}
+
+    const [retry, overlapping] = await Promise.all([
+      placeOrder(user.id, { addressId: address.id }),
+      placeOrder(other.id, { addressId: otherAddress.id }),
+    ]);
+
+    expect(retry.number).not.toBe(first.number);
+    expect(overlapping.providerOrderId).toMatch(/^mock_order_/);
+    expect((await db.order.findUniqueOrThrow({ where: { id: first.orderId } })).status).toBe("EXPIRED");
+    expect(await stockOf(variantA.id)).toBe(3); // 5 - 1 (user's retry) - 1 (other's overlapping order)
+    expect(await stockOf(variantB.id)).toBe(4); // 5 - 1 (other's overlapping order); user's B was restocked
+  });
 });
 
 describe("markOrderPaid", () => {

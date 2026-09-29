@@ -7,6 +7,7 @@ import { AutoRefresh } from "@/components/storefront/checkout/auto-refresh";
 import { RetryPaymentButton } from "@/components/storefront/checkout/retry-payment-button";
 import { PriceBreakup } from "@/components/storefront/price-breakup";
 import { Button } from "@/components/ui/button";
+import { BRAND } from "@/config/brand";
 import { addressLines, formatPhone } from "@/lib/address-format";
 import { formatTimeIst } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
@@ -128,18 +129,17 @@ export default async function OrderStatusPage({ params, searchParams }: {
   } else if (order.status === "PENDING_PAYMENT") {
     body = (
       <Notice testId="payment-confirming" title="Confirming your payment…">
-        <Loader2 className="mx-auto size-8 animate-spin text-text-muted" aria-hidden />
-        <p className="text-text-muted" role="status">This takes a few seconds. You can safely leave; we will email you when it is confirmed.</p>
         <AutoRefresh
           fallback={
-            <>
-              <p className="text-sm text-text-muted">
-                Still waiting? If money left your account it will be confirmed automatically. If it did not, retry the payment.
-              </p>
-              <RetryPaymentButton number={order.number} />
-            </>
+            <p className="text-sm text-text-muted">
+              Still waiting? If money left your account it will be confirmed automatically.
+              Payment taken but not confirmed? Contact {BRAND.supportEmail} with your order number.
+            </p>
           }
-        />
+        >
+          <Loader2 className="mx-auto size-8 animate-spin text-text-muted" aria-hidden />
+          <p className="text-text-muted" role="status">This takes a few seconds. You can safely leave; we will email you when it is confirmed.</p>
+        </AutoRefresh>
       </Notice>
     );
   } else if (order.status === "EXPIRED") {
