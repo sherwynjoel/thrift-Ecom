@@ -1,15 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { motion } from "motion/react";
-import { MagneticButton, Parallax, useReducedMotionSafe } from "@/components/motion";
+import { MagneticLink, Parallax, useReducedMotionSafe } from "@/components/motion";
 import { BRAND } from "@/config/brand";
 
 const HEADLINE = ["Wear", "what", "you", "mean."];
 
 export function Hero() {
-  const router = useRouter();
   const reduced = useReducedMotionSafe();
   return (
     <section className="relative overflow-hidden border-b border-border" data-testid="hero">
@@ -32,8 +31,8 @@ export function Hero() {
           </h1>
           <p className="mt-6 max-w-md text-lg text-text-muted">Heavyweight tees, loud prints, and a design tool for the ones you make yourself.</p>
           <div className="mt-8 flex flex-wrap gap-4">
-            <MagneticButton onClick={() => router.push("/collections/new-drops")} data-testid="hero-cta">Shop new drops</MagneticButton>
-            <button type="button" onClick={() => router.push("/customize")} className="rounded-full border border-border px-8 py-4 font-display text-xl tracking-wide hover:border-text">Design your own</button>
+            <MagneticLink href="/collections/new-drops" data-testid="hero-cta">Shop new drops</MagneticLink>
+            <Link href="/customize" className="inline-flex items-center justify-center rounded-full border border-border px-8 py-4 font-display text-xl tracking-wide hover:border-text">Design your own</Link>
           </div>
         </div>
         <Parallax amount={30} className="relative mx-auto aspect-[4/5] w-full max-w-md">
