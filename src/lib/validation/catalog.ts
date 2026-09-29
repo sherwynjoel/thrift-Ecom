@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Fit } from "@prisma/client";
-import { PRODUCT_SORTS, type ProductFilters, type ProductSort } from "@/server/services/catalog";
+import { PRODUCT_SORTS, type ProductFilters, type ProductSort } from "@/lib/catalog-types";
 
 const FITS = ["OVERSIZED", "REGULAR", "RELAXED"] as const;
 

@@ -2,17 +2,10 @@ import { Prisma, type Fit } from "@prisma/client";
 import { db } from "@/server/db";
 import { NotFoundError } from "@/server/errors";
 import { SIZES } from "@/lib/sizes";
+import { PRODUCT_SORTS, type ProductFilters, type ProductSort } from "@/lib/catalog-types";
 
-export type ProductSort = "featured" | "newest" | "price-asc" | "price-desc";
-export const PRODUCT_SORTS: ProductSort[] = ["featured", "newest", "price-asc", "price-desc"];
-
-export interface ProductFilters {
-  size?: string[];
-  color?: string[];
-  fit?: Fit[];
-  minPricePaise?: number;
-  maxPricePaise?: number;
-}
+export { PRODUCT_SORTS };
+export type { ProductFilters, ProductSort };
 
 export interface ProductCard {
   id: string;
