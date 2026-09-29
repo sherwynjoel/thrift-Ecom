@@ -79,7 +79,7 @@ test.describe("admin", () => {
     await expect(page).toHaveURL(/\/admin\/products$/);
   });
 
-  test("collection create, reorder, delete", async ({ page }) => {
+  test("collection create, delete", async ({ page }) => {
     const name = `E2E Collection ${Date.now()}`;
     await loginAdmin(page);
     await page.goto("/admin/collections/new");

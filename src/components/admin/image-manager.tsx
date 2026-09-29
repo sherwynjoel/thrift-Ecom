@@ -21,6 +21,7 @@ export function ImageManager({ productId, images, colorNames }: { productId: str
   const [pending, start] = useTransition();
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [savedAltId, setSavedAltId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
@@ -29,6 +30,12 @@ export function ImageManager({ productId, images, colorNames }: { productId: str
     const t = setTimeout(() => setConfirmDeleteId(null), 3000);
     return () => clearTimeout(t);
   }, [confirmDeleteId]);
+
+  useEffect(() => {
+    if (!savedAltId) return;
+    const t = setTimeout(() => setSavedAltId(null), 2000);
+    return () => clearTimeout(t);
+  }, [savedAltId]);
 
   const upload = (files: FileList | null) => {
     // Snapshot the files into a plain array before clearing the input: `files` is the *same live*
@@ -100,7 +107,11 @@ export function ImageManager({ productId, images, colorNames }: { productId: str
     start(async () => {
       try {
         const r = await updateProductImageAction(img.id, { alt: merged.alt, colorName: merged.colorName });
-        if (!r.ok) toast.error(r.message);
+        if (!r.ok) {
+          toast.error(r.message);
+          return;
+        }
+        if ("alt" in patch) setSavedAltId(img.id);
       } catch {
         toast.error(GENERIC_ERROR);
       }
@@ -151,7 +162,21 @@ export function ImageManager({ productId, images, colorNames }: { productId: str
                   <Image src={img.url} alt={img.alt} fill sizes="80px" className="object-cover" />
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col gap-2 text-sm">
-                  <input defaultValue={img.alt} aria-label="Alt text" placeholder="Describe the image" onBlur={(e) => e.target.value !== img.alt && save(img, { alt: e.target.value })} className="h-8 rounded-md border border-border bg-surface px-2" />
+                  <div className="flex items-center gap-2">
+                    <input
+                      defaultValue={img.alt}
+                      aria-label="Alt text"
+                      placeholder="Describe the image"
+                      onBlur={(e) => e.target.value !== img.alt && save(img, { alt: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter") return;
+                        e.preventDefault();
+                        if (e.currentTarget.value !== img.alt) save(img, { alt: e.currentTarget.value });
+                      }}
+                      className="h-8 min-w-0 flex-1 rounded-md border border-border bg-surface px-2"
+                    />
+                    {savedAltId === img.id && <span className="shrink-0 text-xs text-text-muted" data-testid="alt-saved">Saved</span>}
+                  </div>
                   <select value={img.colorName ?? ""} aria-label="Color tag" onChange={(e) => save(img, { colorName: e.target.value || null })} className="h-8 rounded-md border border-border bg-surface px-2">
                     <option value="">All colors</option>
                     {orphanColor && <option value={orphanColor}>{orphanColor} (missing)</option>}

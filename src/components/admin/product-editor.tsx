@@ -12,6 +12,7 @@ import type { AdminProductDetail } from "@/server/services/admin-products";
 import { FieldError } from "./field-error";
 import { VariantMatrix } from "./variant-matrix";
 
+const GENERIC_ERROR = "Something went wrong. Please try again.";
 const FITS = [["OVERSIZED", "Oversized"], ["REGULAR", "Regular"], ["RELAXED", "Relaxed"]] as const;
 const STATUSES = [["DRAFT", "Draft (hidden)"], ["ACTIVE", "Active (live)"], ["ARCHIVED", "Archived (hidden)"]] as const;
 
@@ -32,24 +33,32 @@ export function ProductEditor({ product, collections }: { product: AdminProductD
       return;
     }
     start(async () => {
-      const r = await saveProductAction(product?.id ?? null, input);
-      if (!r.ok) {
-        setErrors(r.fieldErrors ?? {});
-        toast.error(r.message);
-        return;
+      try {
+        const r = await saveProductAction(product?.id ?? null, input);
+        if (!r.ok) {
+          setErrors(r.fieldErrors ?? {});
+          toast.error(r.message);
+          return;
+        }
+        setErrors({});
+        toast.success(product ? "Saved" : "Product created");
+        if (product) router.refresh();
+        else router.push(`/admin/products/${r.data.id}`);
+      } catch {
+        toast.error(GENERIC_ERROR);
       }
-      setErrors({});
-      toast.success(product ? "Saved" : "Product created");
-      if (product) router.refresh();
-      else router.push(`/admin/products/${r.data.id}`);
     });
   };
 
   const variantErrors = Object.entries(errors).filter(([k]) => k.startsWith("variants")).flatMap(([, v]) => v);
 
   return (
-    <form className="grid gap-8 xl:grid-cols-[1fr_320px]" onSubmit={(e) => { e.preventDefault(); save(); }} data-testid="product-editor">
-      <div className="space-y-8">
+    <form className="grid gap-8 pb-24 lg:pb-0 xl:grid-cols-[1fr_320px]" onSubmit={(e) => { e.preventDefault(); save(); }} data-testid="product-editor">
+      {/* min-w-0: a grid item's default min-width is "auto" (its content's min-content size), so without
+          this the variant table's `min-w-[560px]` (see variant-matrix.tsx) propagates up through this
+          column and forces the whole page wider than the viewport on phones, even though the table itself
+          scrolls internally via overflow-x-auto. */}
+      <div className="min-w-0 space-y-8">
         <section className="space-y-4 rounded-md border border-border bg-surface p-5">
           <div><Label htmlFor="p-name">Name</Label><Input id="p-name" value={state.name} onChange={(e) => set("name", e.target.value)} className="mt-1 bg-bg" /><FieldError errors={errors.name} /></div>
           <div><Label htmlFor="p-slug">URL slug</Label><Input id="p-slug" value={state.slug} onChange={(e) => set("slug", e.target.value)} placeholder="Leave blank to generate from the name" className="mt-1 bg-bg" /><FieldError errors={errors.slug} /></div>
@@ -73,14 +82,19 @@ export function ProductEditor({ product, collections }: { product: AdminProductD
         </section>
       </div>
 
-      <aside className="space-y-6">
+      <aside className="min-w-0 space-y-6">
         <section className="space-y-3 rounded-md border border-border bg-surface p-5">
           <Label htmlFor="p-status">Status</Label>
           <select id="p-status" value={state.status} onChange={(e) => set("status", e.target.value as ProductFormState["status"])} className="h-9 w-full rounded-md border border-border bg-bg px-3 text-sm" data-testid="status-select">
             {STATUSES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={state.isCustomizable} onChange={(e) => set("isCustomizable", e.target.checked)} className="accent-brand" />Customizable blank (for the design tool)</label>
-          <Button type="submit" disabled={pending} className="w-full font-display text-lg tracking-wide" data-testid="save-product">{pending ? "Saving…" : product ? "Save changes" : "Create product"}</Button>
+          {/* Fixed to the bottom of the viewport below `lg` (so Save is reachable without scrolling past
+              the whole variant matrix on a phone), and back to a normal inline button at `lg`+. Only one
+              button is ever mounted, so data-testid="save-product" never matches twice. */}
+          <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] lg:static lg:border-0 lg:bg-transparent lg:p-0">
+            <Button type="submit" disabled={pending} className="w-full font-display text-lg tracking-wide" data-testid="save-product">{pending ? "Saving…" : product ? "Save changes" : "Create product"}</Button>
+          </div>
         </section>
         <section className="space-y-2 rounded-md border border-border bg-surface p-5">
           <h2 className="text-xl">Collections</h2>

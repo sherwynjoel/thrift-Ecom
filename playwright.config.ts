@@ -24,7 +24,7 @@ export default defineConfig({
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
-    { name: "mobile", use: { ...devices["Pixel 7"] }, testMatch: /home|product-cart/ },
+    { name: "mobile", use: { ...devices["Pixel 7"] }, testMatch: /home|product-cart|admin-mobile/ },
     { name: "reduced-motion", use: { ...devices["Desktop Chrome"], reducedMotion: "reduce" }, testMatch: /home/ },
   ],
 });

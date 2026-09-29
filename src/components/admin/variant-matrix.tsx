@@ -88,12 +88,12 @@ export function VariantMatrix({ state, onChange, inCarts }: { state: ProductForm
                         aria-label={`Price override ${r.colorName} ${r.size}`}
                         aria-invalid={priceInvalid}
                         onChange={(e) => setPriceText(r.key, e.target.value)}
-                        className={cn("h-8 w-28 rounded-md border bg-bg px-2", priceInvalid ? "border-danger" : "border-border")}
+                        className={cn("h-11 w-28 rounded-md border bg-bg px-2 sm:h-8", priceInvalid ? "border-danger" : "border-border")}
                         data-testid="price-override"
                       />
                     </td>
                     <td>
-                      <input type="number" min={0} value={r.stock} aria-label={`Stock ${r.colorName} ${r.size}`} onChange={(e) => setRow(r.key, { stock: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} className="h-8 w-24 rounded-md border border-border bg-bg px-2" data-testid="stock-input" />
+                      <input type="number" min={0} value={r.stock} aria-label={`Stock ${r.colorName} ${r.size}`} onChange={(e) => setRow(r.key, { stock: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} className="h-11 w-24 rounded-md border border-border bg-bg px-2 sm:h-8" data-testid="stock-input" />
                     </td>
                     <td className="p-2 text-xs text-text-muted">{r.id && inCarts[r.id] ? `In ${inCarts[r.id]} bag(s), keep it or set stock to 0` : r.id ? "" : "New"}</td>
                   </tr>
