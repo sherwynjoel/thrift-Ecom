@@ -26,17 +26,26 @@ export async function addProductImages(productId: string, files: File[]): Promis
   const max = await db.productImage.aggregate({ where: { productId }, _max: { sortOrder: true } });
   let next = (max._max.sortOrder ?? -1) + 1;
   const created: AdminImage[] = [];
-  const stored: { rowId: string; key: string }[] = [];
+  const stored: { rowId: string | null; key: string }[] = [];
   try {
     for (const f of files) {
       const { url, key } = await storeImage(f, `products/${productId}`);
+      const entry: { rowId: string | null; key: string } = { rowId: null, key };
+      stored.push(entry);
       const row = await db.productImage.create({ data: { productId, url, alt: product.name, sortOrder: next++ } });
-      stored.push({ rowId: row.id, key });
+      entry.rowId = row.id;
       created.push(toAdmin(row));
     }
   } catch (err) {
     if (stored.length) {
-      await db.productImage.deleteMany({ where: { id: { in: stored.map((s) => s.rowId) } } });
+      const rowIds = stored.filter((s) => s.rowId).map((s) => s.rowId as string);
+      if (rowIds.length) {
+        try {
+          await db.productImage.deleteMany({ where: { id: { in: rowIds } } });
+        } catch (cleanupErr) {
+          console.error("[admin-images] could not remove inserted rows after failed batch", cleanupErr);
+        }
+      }
       for (const { key } of stored) {
         try {
           await getStorage().delete(key);

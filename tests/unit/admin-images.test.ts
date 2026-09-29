@@ -13,7 +13,7 @@ import { resetDb } from "../helpers/db";
 import { createProduct } from "../helpers/fixtures";
 import { addProductImages, deleteProductImage, reorderProductImages, updateProductImage } from "@/server/services/admin-images";
 import { ValidationError } from "@/server/errors";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 
 const png = () => new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])], "a.png", { type: "image/png" });
 const gif = () => new File([new Uint8Array([0x47, 0x49, 0x46, 0x38, 0, 0, 0, 0, 0, 0, 0, 0])], "a.gif", { type: "image/gif" });
@@ -73,5 +73,19 @@ describe("admin images service", () => {
     }
     expect(await db.productImage.count({ where: { productId: p.id } })).toBe(0);
     expect(existsSync(join(root, keys[0]))).toBe(false);
+  });
+
+  it("cleans up a stored file when its own image insert fails", async () => {
+    const p = await createProduct({ images: [] });
+    const createSpy = vi.spyOn(db.productImage, "create").mockRejectedValueOnce(new Error("insert failed"));
+    try {
+      await expect(addProductImages(p.id, [png()])).rejects.toThrow("insert failed");
+    } finally {
+      createSpy.mockRestore();
+    }
+    expect(await db.productImage.count({ where: { productId: p.id } })).toBe(0);
+    const dir = join(root, "products", p.id);
+    const remaining = existsSync(dir) ? readdirSync(dir) : [];
+    expect(remaining).toEqual([]);
   });
 });
