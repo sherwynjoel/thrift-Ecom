@@ -53,7 +53,7 @@ export function ProductEditor({ product, collections }: { product: AdminProductD
   const variantErrors = Object.entries(errors).filter(([k]) => k.startsWith("variants")).flatMap(([, v]) => v);
 
   return (
-    <form className="grid gap-8 pb-24 lg:pb-0 xl:grid-cols-[1fr_320px]" onSubmit={(e) => { e.preventDefault(); save(); }} data-testid="product-editor">
+    <form className="grid gap-8 xl:grid-cols-[1fr_320px]" onSubmit={(e) => { e.preventDefault(); save(); }} data-testid="product-editor">
       {/* min-w-0: a grid item's default min-width is "auto" (its content's min-content size), so without
           this the variant table's `min-w-[560px]` (see variant-matrix.tsx) propagates up through this
           column and forces the whole page wider than the viewport on phones, even though the table itself

@@ -22,14 +22,14 @@ export default async function EditProductPage({ params }: Props) {
   });
   const collections = await listCollectionOptions();
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24 lg:pb-0">
       <Link href="/admin/products" className="text-sm text-text-muted hover:text-text">← Products</Link>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-5xl">{product.name}</h1>
         <StatusBadge status={product.status} />
         {product.status === "ACTIVE" && <Link href={`/products/${product.slug}`} target="_blank" className="text-sm underline-offset-4 hover:underline" data-testid="view-on-store">View on store ↗</Link>}
       </div>
-      <ProductEditor key={product.variants.map((v) => `${v.id}:${v.stock}:${v.pricePaise}`).join()} product={product} collections={collections} />
+      <ProductEditor key={`${product.updatedAt.getTime()}:${product.variants.map((v) => `${v.id}:${v.stock}:${v.pricePaise}`).join()}`} product={product} collections={collections} />
       <ImageManager productId={product.id} images={product.images} colorNames={[...new Set(product.variants.map((v) => v.colorName))]} />
       <section className="rounded-md border border-danger/40 p-5">
         <h2 className="mb-2 text-xl">Danger zone</h2>

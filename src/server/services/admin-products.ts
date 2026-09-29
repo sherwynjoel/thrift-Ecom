@@ -13,7 +13,7 @@ export interface AdminVariant { id: string; sku: string; size: string; colorName
 export interface AdminImage { id: string; url: string; alt: string; colorName: string | null; sortOrder: number }
 export interface AdminProductDetail {
   id: string; slug: string; name: string; description: string; fit: Fit; fabric: string;
-  basePricePaise: number; compareAtPricePaise: number | null; status: ProductStatus; isCustomizable: boolean;
+  basePricePaise: number; compareAtPricePaise: number | null; status: ProductStatus; isCustomizable: boolean; updatedAt: Date;
   collectionIds: string[]; images: AdminImage[]; variants: AdminVariant[];
 }
 
@@ -189,7 +189,7 @@ export async function getAdminProduct(id: string): Promise<AdminProductDetail> {
   if (!p) throw new NotFoundError("Product");
   return {
     id: p.id, slug: p.slug, name: p.name, description: p.description, fit: p.fit, fabric: p.fabric,
-    basePricePaise: p.basePricePaise, compareAtPricePaise: p.compareAtPricePaise, status: p.status, isCustomizable: p.isCustomizable,
+    basePricePaise: p.basePricePaise, compareAtPricePaise: p.compareAtPricePaise, status: p.status, isCustomizable: p.isCustomizable, updatedAt: p.updatedAt,
     collectionIds: p.collections.map((c) => c.collectionId),
     images: p.images.map((i) => ({ id: i.id, url: i.url, alt: i.alt, colorName: i.colorName, sortOrder: i.sortOrder })),
     variants: p.variants.map((v) => ({ id: v.id, sku: v.sku, size: v.size, colorName: v.colorName, colorHex: v.colorHex, pricePaise: v.pricePaise, stock: v.stock, inCarts: v._count.cartItems })),
