@@ -105,9 +105,12 @@ describe("catalog service", () => {
 
   it("finds related products from the same collections, excluding itself", async () => {
     const col = await createCollection({ name: "Rel" });
+    const hidden = await createCollection({ name: "Hidden Rel", isActive: false });
     const me = await createProduct({ name: "Me", collectionIds: [col.id] });
     await createProduct({ name: "Sibling", collectionIds: [col.id] });
     await createProduct({ name: "Stranger" });
+    await createProduct({ name: "Hidden Sibling", collectionIds: [hidden.id] });
+    await linkProductToCollection(hidden.id, me.id, 0);
     const rel = await getRelatedProducts(me.id, 4);
     expect(rel.map((p) => p.name)).toEqual(["Sibling"]);
   });

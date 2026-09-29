@@ -224,11 +224,18 @@ export async function getProductBySlug(slug: string): Promise<ProductDetail> {
 }
 
 export async function getRelatedProducts(productId: string, limit = 4): Promise<ProductCard[]> {
-  const links = await db.productCollection.findMany({ where: { productId }, select: { collectionId: true } });
+  const links = await db.productCollection.findMany({
+    where: { productId, collection: { isActive: true } },
+    select: { collectionId: true },
+  });
   const ids = links.map((l) => l.collectionId);
   if (!ids.length) return [];
   const rows = await db.product.findMany({
-    where: { status: "ACTIVE", id: { not: productId }, collections: { some: { collectionId: { in: ids } } } },
+    where: {
+      status: "ACTIVE",
+      id: { not: productId },
+      collections: { some: { collectionId: { in: ids }, collection: { isActive: true } } },
+    },
     orderBy: { createdAt: "desc" },
     take: limit,
     include: cardInclude,
