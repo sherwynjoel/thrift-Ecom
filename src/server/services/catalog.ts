@@ -17,6 +17,7 @@ export interface ProductCard {
   images: { url: string; alt: string }[];
   colors: { name: string; hex: string }[];
   lowStock: boolean;
+  soldOut: boolean;
   isCustomizable: boolean;
   createdAt: Date;
 }
@@ -69,6 +70,8 @@ function toCard(p: ProductWithCard): ProductCard {
   const seen = new Map<string, string>();
   for (const v of p.variants) if (!seen.has(v.colorName)) seen.set(v.colorName, v.colorHex);
   const stocks = p.variants.map((v) => v.stock);
+  const soldOut = stocks.length > 0 && stocks.every((s) => s === 0);
+  const lowStock = !soldOut && stocks.length > 0 && stocks.every((s) => s < LOW_STOCK_AT);
   return {
     id: p.id,
     slug: p.slug,
@@ -78,7 +81,8 @@ function toCard(p: ProductWithCard): ProductCard {
     compareAtPricePaise: p.compareAtPricePaise,
     images: p.images.map((i) => ({ url: i.url, alt: i.alt })),
     colors: [...seen].map(([name, hex]) => ({ name, hex })),
-    lowStock: stocks.length > 0 && stocks.every((s) => s < LOW_STOCK_AT),
+    lowStock,
+    soldOut,
     isCustomizable: p.isCustomizable,
     createdAt: p.createdAt,
   };

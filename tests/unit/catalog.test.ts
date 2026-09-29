@@ -84,12 +84,21 @@ describe("catalog service", () => {
       ],
       images: [{ url: "/a.svg" }, { url: "/b.svg" }, { url: "/c.svg" }],
     });
-    const [card] = (await listProducts({})).items;
+    await createProduct({
+      name: "Sold Out",
+      variants: [{ size: "M", colorName: "Black", stock: 0 }],
+    });
+    const items = (await listProducts({})).items;
+    const card = items.find((i) => i.name === "Card")!;
+    const soldOutCard = items.find((i) => i.name === "Sold Out")!;
     expect(card.pricePaise).toBe(54900);
     expect(card.compareAtPricePaise).toBe(119900);
     expect(card.images.map((i) => i.url)).toEqual(["/a.svg", "/b.svg"]);
     expect(card.colors).toEqual([{ name: "Black", hex: "#111111" }, { name: "Beige", hex: "#e5d5b5" }]);
     expect(card.lowStock).toBe(true);
+    expect(card.soldOut).toBe(false);
+    expect(soldOutCard.soldOut).toBe(true);
+    expect(soldOutCard.lowStock).toBe(false);
   });
 
   it("returns product detail with variants and collections, 404 for draft or missing", async () => {
