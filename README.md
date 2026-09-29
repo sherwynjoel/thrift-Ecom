@@ -18,6 +18,10 @@ Custom T-shirt e-commerce: animated storefront, persistent cart, accounts, admin
 - `npm run db:migrate`, `npm run db:test:migrate`, `npm run db:seed`, `npm run db:studio`
 - `npm run db:seed` is a development tool: it upserts the seed collections (overwriting their name, description, and flags) and skips products that already exist.
 
+## End-to-end tests
+
+`npm run test:e2e` runs Playwright against the dev server and the seeded dev database. Before the first run: `docker compose up -d`, `npm run db:migrate`, `npm run db:seed`, `npx playwright install chromium`. Use `npm run test:e2e:ui` to watch them.
+
 ## Docs
 
 - Design specs: `docs/superpowers/specs/`
