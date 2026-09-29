@@ -95,6 +95,11 @@ export async function updateProfile(userId: string, input: { name: string }): Pr
   return toPublic(user);
 }
 
+export async function userHasPassword(id: string): Promise<boolean> {
+  const row = await db.user.findUnique({ where: { id }, select: { passwordHash: true } });
+  return Boolean(row?.passwordHash);
+}
+
 export async function changePassword(userId: string, current: string, next: string): Promise<void> {
   const parsed = changePasswordSchema.safeParse({ current, next });
   if (!parsed.success) throw new ValidationError(fieldErrors(parsed.error));
