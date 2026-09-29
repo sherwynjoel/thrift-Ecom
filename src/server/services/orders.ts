@@ -6,6 +6,7 @@ import { ConflictError, NotFoundError, PaymentError, StockChangedError, Validati
 import { getPaymentProvider, type ProviderName } from "@/server/payments";
 import { quote } from "@/server/services/promotions";
 import { addOrderEvent, orderWithItems, toOrderSummary, toOrderView, type OrderSummary, type OrderView, type Tx } from "@/server/services/order-records";
+import { notifyOrder } from "@/server/services/notifications";
 import type { Page } from "@/server/services/catalog";
 import { canCancel, isPaidStatus, ORDER_STATUS_LABEL, TO_SHIP_STATUSES, type OrderEventType } from "@/lib/order-status";
 import { formatPaise } from "@/lib/money";
@@ -194,7 +195,7 @@ export async function cancelOrder(orderId: string, opts: { actorId?: string | nu
   const reason = opts.reason?.trim();
   const ok = await releaseOrder(orderId, ["PENDING_PAYMENT", ...TO_SHIP_STATUSES], "CANCELLED", "STATUS_CHANGED", `Cancelled${reason ? `: ${reason}` : ""}; stock restocked`, opts.actorId);
   if (!ok) throw new ConflictError("This order just changed. Reload and try again.");
-  // Task 6 adds: await notifyOrder(orderId, "cancelled");
+  await notifyOrder(orderId, "cancelled");
 }
 
 class ReReserveFailed extends Error {}
@@ -214,7 +215,7 @@ async function afterPaid(orderId: string, userId: string, items: { variantId: st
   } catch (err) {
     console.error("[orders] cart cleanup failed", orderId, err);
   }
-  // Task 6 adds: await notifyOrder(orderId, "paid");
+  await notifyOrder(orderId, "paid");
 }
 
 export type PaymentSource = "client" | "webhook" | "mock";
