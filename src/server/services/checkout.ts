@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { db } from "@/server/db";
 import { zodFieldErrors } from "@/server/action-result";
-import { ForbiddenError, NotFoundError, ValidationError, type StockIssue } from "@/server/errors";
+import { ForbiddenError, NotFoundError, RateLimitedError, ValidationError, type StockIssue } from "@/server/errors";
 import { getPaymentProvider } from "@/server/payments";
+import { rateLimit } from "@/server/rate-limit";
 import { listAddresses, type AddressView } from "@/server/services/addresses";
 import type { CartRef } from "@/server/services/cart";
 import {
@@ -42,6 +43,26 @@ export async function getCheckoutView(userId: string, couponCode?: string | null
   const { rows, issues } = await reconcileCartStock(loaded, userId);
   const price = await quote({ lines: toPricingLines(rows), couponCode, userId });
   return { lines: rows.map(toLineView), addresses, price, stockIssues: issues, email: user.email, freeShippingThresholdPaise: settings.freeShippingThresholdPaise };
+}
+
+/** Coupon checks are an oracle for which codes exist; cap them per user (UI action and API alike). */
+export const COUPON_QUOTE_LIMIT = 20;
+export const COUPON_QUOTE_WINDOW_MS = 10 * 60_000;
+
+export function limitCouponQuotes(userId: string): void {
+  const rl = rateLimit(`coupon-quote:${userId}`, COUPON_QUOTE_LIMIT, COUPON_QUOTE_WINDOW_MS);
+  if (!rl.ok) throw new RateLimitedError(rl.retryAfterSec);
+}
+
+/**
+ * React key for the checkout form: changes whenever the server-side bag or its price changes, so a
+ * `router.refresh()` after a failed Pay (stock moved, offer ended, coupon rejected) remounts the form
+ * with the fresh server quote instead of leaving a stale total on the Pay button.
+ */
+export function checkoutFormKey(view: Pick<CheckoutView, "lines" | "price">): string {
+  const lines = view.lines.map((l) => `${l.variantId}:${l.quantity}:${l.unitPricePaise}`).join(",");
+  const p = view.price;
+  return `${lines}|${p.totalPaise}|${p.discountPaise}|${p.applied ?? "none"}|${p.coupon?.code ?? ""}`;
 }
 
 export async function quoteForUser(userId: string, couponCode: string | null): Promise<PriceResult> {
@@ -91,7 +112,7 @@ export async function confirmClientPayment(userId: string, input: unknown): Prom
   const order = await getOwnedOrderRef(userId, orderId);
   if (order.providerOrderId !== providerOrderId) throw new ValidationError({ providerOrderId: ["This payment does not belong to this order"] });
   if (!getPaymentProvider().verifyPaymentSignature({ providerOrderId, paymentId, signature })) {
-    await recordPaymentFailure(order.id, `Rejected a payment confirmation with an invalid signature (${paymentId})`);
+    await recordPaymentFailure(order.id, `Rejected a payment confirmation with an invalid signature (${paymentId})`, paymentId);
     throw new ForbiddenError("We could not verify this payment. If money was debited, it will be confirmed automatically within a few minutes.");
   }
   return markOrderPaid(order.id, paymentId, "client");
@@ -131,13 +152,16 @@ export async function handleRazorpayWebhook(rawBody: string, signature: string |
 
   if (event === "payment.captured" || event === "order.paid") {
     if (!payment?.id) return { status: 200, handled: "ignored" };
-    const amount = event === "order.paid" ? (rzOrder?.amount_paid ?? payment.amount) : payment.amount;
+    // A missing amount is treated as a mismatch (null), never as "matches".
+    const amount = (event === "order.paid" ? (rzOrder?.amount_paid ?? payment.amount) : payment.amount) ?? null;
     const r = await markOrderPaid(order.id, payment.id, "webhook", { amountPaise: amount });
     return { status: 200, handled: r.outcome };
   }
   if (event === "payment.failed") {
-    await recordPaymentFailure(order.id, `Payment failed${payment?.error_description ? `: ${payment.error_description}` : ""}`);
-    return { status: 200, handled: "payment-failed" };
+    const paymentId = payment?.id ?? null;
+    const reason = `${paymentId ? `Payment ${paymentId}` : "Payment"} failed${payment?.error_description ? `: ${payment.error_description}` : ""}`;
+    const recorded = await recordPaymentFailure(order.id, reason, paymentId);
+    return { status: 200, handled: recorded ? "payment-failed" : "ignored" };
   }
   return { status: 200, handled: "ignored" };
 }

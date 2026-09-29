@@ -9,19 +9,29 @@ declare global {
 }
 
 const SCRIPT_SRC = "https://checkout.razorpay.com/v1/checkout.js";
+const LOAD_ERROR = "Could not open the payment window. Check your connection and try again.";
+/** A captive portal or blocker can leave the request hanging with no error event; give up after this. */
+export const RAZORPAY_LOAD_TIMEOUT_MS = 15_000;
 let loading: Promise<void> | null = null;
 
-export function loadRazorpay(): Promise<void> {
+export function loadRazorpay(timeoutMs: number = RAZORPAY_LOAD_TIMEOUT_MS): Promise<void> {
   if (window.Razorpay) return Promise.resolve();
   loading ??= new Promise<void>((resolve, reject) => {
     const s = document.createElement("script");
+    const fail = () => {
+      window.clearTimeout(timer);
+      s.remove();
+      loading = null;
+      reject(new Error(LOAD_ERROR));
+    };
+    const timer = window.setTimeout(fail, timeoutMs);
     s.src = SCRIPT_SRC;
     s.async = true;
-    s.onload = () => resolve();
-    s.onerror = () => {
-      loading = null;
-      reject(new Error("Could not open the payment window. Check your connection and try again."));
+    s.onload = () => {
+      window.clearTimeout(timer);
+      resolve();
     };
+    s.onerror = fail;
     document.head.appendChild(s);
   });
   return loading;

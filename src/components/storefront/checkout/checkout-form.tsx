@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { placeOrderAction, quoteCheckoutAction } from "@/app/(storefront)/checkout/actions";
 import { AddressForm } from "@/components/storefront/account/address-form";
@@ -58,6 +58,16 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
   const [couponPending, startCoupon] = useTransition();
   const [paying, startPay] = useTransition();
   const pending = couponPending || paying;
+  const couponInputRef = useRef<HTMLInputElement>(null);
+  const focusCouponInput = useRef(false);
+
+  // After "Remove" the chip (and its focused button) unmounts; hand focus to the code input instead.
+  useEffect(() => {
+    if (appliedCode === null && focusCouponInput.current) {
+      focusCouponInput.current = false;
+      couponInputRef.current?.focus();
+    }
+  }, [appliedCode]);
 
   const itemCount = view.lines.reduce((s, l) => s + l.quantity, 0);
   const shippingGap = view.freeShippingThresholdPaise - (price.subtotalPaise - price.discountPaise);
@@ -94,6 +104,7 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
         return;
       }
       setPrice(r.data);
+      focusCouponInput.current = true;
       setAppliedCode(null);
       setCouponError(null);
       setCouponInput("");
@@ -105,11 +116,17 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
     startPay(async () => {
       const r = await placeOrderAction({ addressId: selectedId, couponCode: appliedCode, customerNote: note });
       if (!r.ok) {
-        if (r.fieldErrors?.couponCode) {
-          setCouponError(r.fieldErrors.couponCode[0]);
-          setAppliedCode(null);
-        }
         toast.error(r.message);
+        if (r.fieldErrors?.couponCode) {
+          // The code was refused at Pay time (e.g. it just hit its usage limit): drop it and re-quote
+          // without it, so the summary and the Pay button never show a discount the order won't get.
+          setAppliedCode(null);
+          setCouponInput("");
+          setCouponError(r.fieldErrors.couponCode[0]);
+          const fresh = await quoteCheckoutAction(null);
+          if (fresh.ok) setPrice(fresh.data);
+        }
+        // Any other server-side change (stock, offers) changes the page's form key and remounts the form.
         router.refresh();
         return;
       }
@@ -251,6 +268,7 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
               <Label htmlFor="coupon">Coupon code</Label>
               <div className="mt-1 flex gap-2">
                 <Input
+                  ref={couponInputRef}
                   id="coupon"
                   name="coupon"
                   value={couponInput}
@@ -269,7 +287,7 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
               </div>
             </form>
           )}
-          <p id="coupon-msg" role="alert" aria-live="polite" className="text-sm text-danger empty:hidden" data-testid="coupon-error">
+          <p id="coupon-msg" role="alert" className="min-h-5 text-sm text-danger" data-testid="coupon-error">
             {couponError}
           </p>
           <DiscountNotice price={price} appliedCode={appliedCode} />

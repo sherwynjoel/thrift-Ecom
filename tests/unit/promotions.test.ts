@@ -30,7 +30,7 @@ describe("promotions service", () => {
     await createOrderRow(other.id, { couponCode: "ONCE", status: "CANCELLED" });
     expect(await couponUses("once", u.id)).toEqual({ total: 2, byUser: 1 });
     await db.coupon.create({ data: { code: "ONCE", type: "FLAT", value: 5000, perUserLimit: 1 } });
-    expect((await quote({ lines, couponCode: "ONCE", userId: u.id })).couponError).toBe("You have already used this code");
+    expect((await quote({ lines, couponCode: "ONCE", userId: u.id })).couponError).toBe("This code can't be applied");
     const fresh = await createUser();
     expect((await quote({ lines, couponCode: "ONCE", userId: fresh.id })).applied).toBe("coupon");
   });

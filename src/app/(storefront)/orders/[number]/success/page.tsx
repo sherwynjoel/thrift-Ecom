@@ -130,7 +130,16 @@ export default async function OrderStatusPage({ params, searchParams }: {
       <Notice testId="payment-confirming" title="Confirming your payment…">
         <Loader2 className="mx-auto size-8 animate-spin text-text-muted" aria-hidden />
         <p className="text-text-muted" role="status">This takes a few seconds. You can safely leave; we will email you when it is confirmed.</p>
-        <AutoRefresh />
+        <AutoRefresh
+          fallback={
+            <>
+              <p className="text-sm text-text-muted">
+                Still waiting? If money left your account it will be confirmed automatically. If it did not, retry the payment.
+              </p>
+              <RetryPaymentButton number={order.number} />
+            </>
+          }
+        />
       </Notice>
     );
   } else if (order.status === "EXPIRED") {

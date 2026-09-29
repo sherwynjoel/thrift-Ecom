@@ -8,14 +8,16 @@ import { getPaymentProvider, isMockPayments } from "@/server/payments";
 import { MockProvider, newMockPaymentId } from "@/server/payments/mock";
 import { rateLimit } from "@/server/rate-limit";
 import { requireUserId } from "@/server/session-user";
-import { confirmClientPayment, getOwnedOrderRef, quoteForUser } from "@/server/services/checkout";
+import { confirmClientPayment, getOwnedOrderRef, limitCouponQuotes, quoteForUser } from "@/server/services/checkout";
 import { getRetryPayload, placeOrder, recordPaymentFailure, type CheckoutPayload, type PlaceOrderInput } from "@/server/services/orders";
 import type { PriceResult } from "@/lib/pricing";
 
 export async function quoteCheckoutAction(couponCode: string | null): Promise<ActionResult<PriceResult>> {
   try {
     const userId = await requireUserId();
-    return { ok: true, data: await quoteForUser(userId, couponCode?.trim() || null) };
+    const code = couponCode?.trim() || null;
+    if (code) limitCouponQuotes(userId);
+    return { ok: true, data: await quoteForUser(userId, code) };
   } catch (err) {
     return actionError(err);
   }

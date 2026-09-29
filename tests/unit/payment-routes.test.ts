@@ -45,4 +45,15 @@ describe("payment routes", () => {
     const forged = await webhook(new Request(`${BASE}/api/webhooks/razorpay`, { method: "POST", body: raw, headers: { "x-razorpay-signature": "0".repeat(64) } }));
     expect(forged.status).toBe(400);
   });
+
+  it("rate-limits coupon checks on GET /api/v1/checkout (review I2)", async () => {
+    const user = await createUser();
+    const p = await createProduct({ variants: [{ size: "M", colorName: "Black", stock: 5 }] });
+    await addItem({ userId: user.id }, p.variants[0].id, 1);
+    const headers = { authorization: `Bearer ${await signApiToken({ id: user.id, role: "CUSTOMER" })}` };
+    const get = (q: string) => checkoutGet(new NextRequest(`${BASE}/api/v1/checkout${q}`, { headers }), params);
+    for (let i = 0; i < 20; i++) expect((await get(`?coupon=TRY${i}`)).status).toBe(200);
+    expect((await get("?coupon=TRYX")).status).toBe(429);
+    expect((await get("")).status).toBe(200);
+  });
 });

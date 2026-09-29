@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { discountLabel, priceCart, type PricingContext, type PricingCoupon, type PricingOffer } from "@/lib/pricing";
+import { COUPON_UNAVAILABLE, discountLabel, priceCart, type PricingContext, type PricingCoupon, type PricingOffer } from "@/lib/pricing";
 
 const settings = { shippingFeePaise: 7900, freeShippingThresholdPaise: 99900 };
 const now = new Date("2026-10-01T10:00:00Z");
@@ -58,19 +58,21 @@ describe("coupons", () => {
 
   it("respects the date window inclusively", () => {
     const early = priceCart([line(59900)], ctx({ coupon: coupon({ startsAt: new Date("2026-10-02T00:00:00Z") }) }));
-    expect(early.couponError).toBe("This code is not active yet");
+    expect(early.couponError).toBe(COUPON_UNAVAILABLE);
     const late = priceCart([line(59900)], ctx({ coupon: coupon({ endsAt: new Date("2026-09-30T00:00:00Z") }) }));
-    expect(late.couponError).toBe("This code has expired");
+    expect(late.couponError).toBe(COUPON_UNAVAILABLE);
     const edge = priceCart([line(59900)], ctx({ coupon: coupon({ startsAt: now, endsAt: now }) }));
     expect(edge.couponError).toBeUndefined();
     expect(edge.applied).toBe("coupon");
   });
 
   it("rejects inactive codes and exhausted usage", () => {
-    expect(priceCart([line(59900)], ctx({ coupon: coupon({ active: false }) })).couponError).toBe("This code is not active");
-    expect(priceCart([line(59900)], ctx({ coupon: coupon({ usageLimit: 5 }), couponUsesTotal: 5 })).couponError).toBe("This code has reached its usage limit");
+    expect(priceCart([line(59900)], ctx({ coupon: coupon({ active: false }) })).couponError).toBe(COUPON_UNAVAILABLE);
+    expect(priceCart([line(59900)], ctx({ coupon: coupon({ usageLimit: 5 }), couponUsesTotal: 5 })).couponError).toBe(COUPON_UNAVAILABLE);
     expect(priceCart([line(59900)], ctx({ coupon: coupon({ usageLimit: 5 }), couponUsesTotal: 4 })).couponError).toBeUndefined();
-    expect(priceCart([line(59900)], ctx({ coupon: coupon({ perUserLimit: 1 }), couponUsesByUser: 1 })).couponError).toBe("You have already used this code");
+    expect(priceCart([line(59900)], ctx({ coupon: coupon({ perUserLimit: 1 }), couponUsesByUser: 1 })).couponError).toBe(COUPON_UNAVAILABLE);
+    // The min-subtotal hint is only given for codes that would otherwise apply (it reveals the code exists).
+    expect(priceCart([line(100)], ctx({ coupon: coupon({ active: false, minSubtotalPaise: 99900 }) })).couponError).toBe(COUPON_UNAVAILABLE);
   });
 });
 

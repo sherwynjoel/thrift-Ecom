@@ -1,12 +1,14 @@
 import { handle, ok, parseJson, requireApiUser } from "@/server/api";
 import { RateLimitedError } from "@/server/errors";
 import { rateLimit } from "@/server/rate-limit";
-import { getCheckoutView } from "@/server/services/checkout";
+import { getCheckoutView, limitCouponQuotes } from "@/server/services/checkout";
 import { placeOrder, placeOrderSchema } from "@/server/services/orders";
 
 export const GET = handle(async (req) => {
   const user = await requireApiUser(req);
-  return ok(await getCheckoutView(user.id, req.nextUrl.searchParams.get("coupon")));
+  const coupon = req.nextUrl.searchParams.get("coupon")?.trim() || null;
+  if (coupon) limitCouponQuotes(user.id);
+  return ok(await getCheckoutView(user.id, coupon));
 });
 
 export const POST = handle(async (req) => {

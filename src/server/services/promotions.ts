@@ -1,9 +1,10 @@
 import { db } from "@/server/db";
 import { PAID_STATUSES } from "@/lib/order-status";
-import { priceCart, type PriceResult, type PricingCoupon, type PricingLine, type PricingOffer } from "@/lib/pricing";
+import { COUPON_UNAVAILABLE, priceCart, type PriceResult, type PricingCoupon, type PricingLine, type PricingOffer } from "@/lib/pricing";
 import { getSettings } from "@/server/services/settings";
 
-export const UNKNOWN_COUPON = "This code is not valid";
+/** Unknown codes get the same message as unusable ones (see COUPON_UNAVAILABLE). */
+export const UNKNOWN_COUPON = COUPON_UNAVAILABLE;
 
 export function normalizeCouponCode(code: string): string {
   return code.trim().toUpperCase();

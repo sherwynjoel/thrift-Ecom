@@ -5,7 +5,7 @@ import { CheckoutForm } from "@/components/storefront/checkout/checkout-form";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/server/auth";
 import { paymentProviderName } from "@/server/payments";
-import { getCheckoutView } from "@/server/services/checkout";
+import { checkoutFormKey, getCheckoutView } from "@/server/services/checkout";
 
 export const metadata: Metadata = { title: "Checkout" };
 export const dynamic = "force-dynamic";
@@ -23,7 +23,6 @@ export default async function CheckoutPage() {
       </div>
     );
   }
-  // Remount the form when the server-side bag changes (e.g. after a stock adjustment + router.refresh()).
-  const key = view.lines.map((l) => `${l.variantId}:${l.quantity}`).join(",");
-  return <CheckoutForm key={key} view={view} provider={paymentProviderName()} />;
+  // Remount the form when the server-side bag or its price changes (e.g. a failed Pay + router.refresh()).
+  return <CheckoutForm key={checkoutFormKey(view)} view={view} provider={paymentProviderName()} />;
 }

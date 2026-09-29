@@ -8,7 +8,7 @@ import { placeOrder } from "@/server/services/orders";
 import { MOCK_SECRET, MockProvider } from "@/server/payments/mock";
 import { hmacSha256Hex } from "@/server/payments/hmac";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/server/errors";
-import { confirmClientPayment, getCheckoutView, handleRazorpayWebhook, previewCartPricing } from "@/server/services/checkout";
+import { checkoutFormKey, confirmClientPayment, getCheckoutView, handleRazorpayWebhook, previewCartPricing } from "@/server/services/checkout";
 
 const ADDRESS = { fullName: "Asha Rao", phone: "9876543210", line1: "12 MG Road", city: "Bengaluru", state: "Karnataka", pincode: "560001" };
 const mock = new MockProvider();
@@ -50,9 +50,12 @@ describe("checkout view and preview", () => {
 
   it("counts stock held by the user's own open order as theirs when they return to checkout", async () => {
     const user = await createUser();
+    const other = await createUser();
     const p = await createProduct({ variants: [{ size: "M", colorName: "Black", stock: 1 }] });
     const address = await createAddress(user.id, ADDRESS);
     await addItem({ userId: user.id }, p.variants[0].id, 1);
+    // Another shopper bags the same last unit while it is still in stock.
+    await addItem({ userId: other.id }, p.variants[0].id, 1);
     await placeOrder(user.id, { addressId: address.id });
     expect((await db.productVariant.findUniqueOrThrow({ where: { id: p.variants[0].id } })).stock).toBe(0);
 
@@ -61,11 +64,11 @@ describe("checkout view and preview", () => {
     expect(view.lines).toEqual([expect.objectContaining({ variantId: p.variants[0].id, quantity: 1 })]);
     expect(await db.cartItem.count({ where: { cart: { userId: user.id } } })).toBe(1);
 
-    // Someone else's reservation is still a real sell-out for a different shopper.
-    const other = await createUser();
-    await addItem({ userId: other.id }, p.variants[0].id, 1).catch(() => undefined);
+    // Someone else's reservation is still a real sell-out for the other shopper: their line is removed.
     const otherView = await getCheckoutView(other.id);
+    expect(otherView.stockIssues).toEqual([expect.objectContaining({ variantId: p.variants[0].id, requested: 1, available: 0 })]);
     expect(otherView.lines).toHaveLength(0);
+    expect(await db.cartItem.count({ where: { cart: { userId: other.id } } })).toBe(0);
   });
 
   it("previews offers for any cart, including guests", async () => {
@@ -131,5 +134,51 @@ describe("Razorpay webhook handling", () => {
     expect(await handleRazorpayWebhook(failed.raw, failed.sig)).toEqual({ status: 200, handled: "payment-failed" });
     const events = await db.orderEvent.findMany({ where: { orderId: payload.orderId, type: "PAYMENT_FAILED" } });
     expect(events[0].message).toContain("Card declined");
+  });
+});
+
+describe("payment failure events (review M4) and missing amounts (M6)", () => {
+  beforeEach(resetDb);
+
+  const failures = (orderId: string) => db.orderEvent.findMany({ where: { orderId, type: "PAYMENT_FAILED" } });
+
+  it("records one PAYMENT_FAILED per payment id, and none once the order is paid", async () => {
+    const { user, payload } = await placed();
+    const bad = { orderId: payload.orderId, providerOrderId: payload.providerOrderId, paymentId: "mock_pay_x", signature: "deadbeef" };
+    await expect(confirmClientPayment(user.id, bad)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(confirmClientPayment(user.id, bad)).rejects.toBeInstanceOf(ForbiddenError);
+    expect(await failures(payload.orderId)).toHaveLength(1);
+
+    const failed = signed({ event: "payment.failed", payload: { payment: { entity: { id: "pay_f", order_id: payload.providerOrderId, error_description: "Card declined" } } } });
+    const [a, b] = await Promise.all([handleRazorpayWebhook(failed.raw, failed.sig), handleRazorpayWebhook(failed.raw, failed.sig)]);
+    expect([a.handled, b.handled].sort()).toEqual(["ignored", "payment-failed"]);
+    expect(await failures(payload.orderId)).toHaveLength(2);
+
+    await confirmClientPayment(user.id, { orderId: payload.orderId, providerOrderId: payload.providerOrderId, paymentId: "mock_pay_ok", signature: mock.sign(payload.providerOrderId, "mock_pay_ok") });
+    const late = signed({ event: "payment.failed", payload: { payment: { entity: { id: "pay_g", order_id: payload.providerOrderId } } } });
+    expect(await handleRazorpayWebhook(late.raw, late.sig)).toEqual({ status: 200, handled: "ignored" });
+    await expect(confirmClientPayment(user.id, { ...bad, paymentId: "mock_pay_y" })).rejects.toBeInstanceOf(ForbiddenError);
+    expect(await failures(payload.orderId)).toHaveLength(2);
+  });
+
+  it("treats a captured payment without an amount as a mismatch, not as paid", async () => {
+    const { payload } = await placed();
+    const { raw, sig } = signed({ event: "payment.captured", payload: { payment: { entity: { id: "pay_noamt", order_id: payload.providerOrderId } } } });
+    expect(await handleRazorpayWebhook(raw, sig)).toEqual({ status: 200, handled: "amount_mismatch" });
+    const o = await db.order.findUniqueOrThrow({ where: { id: payload.orderId }, include: { events: true } });
+    expect(o.status).toBe("PENDING_PAYMENT");
+    expect(o.needsAttention).toBe(true);
+    expect(o.events.find((e) => e.type === "ATTENTION")?.message).toContain("without an amount");
+  });
+});
+
+describe("checkout form key (review I1)", () => {
+  it("changes when the server price changes even if the bag lines do not", () => {
+    const lines = [{ variantId: "v1", productName: "T", productSlug: "t", imageUrl: null, size: "M", colorName: "Black", unitPricePaise: 59900, quantity: 2, lineTotalPaise: 119800 }];
+    const base = { subtotalPaise: 119800, offer: null, coupon: null, applied: null, discountPaise: 0, shippingPaise: 0, totalPaise: 119800 } as const;
+    const withOffer = { ...base, offer: { label: "Any 2", discountPaise: 19900 }, applied: "offer" as const, discountPaise: 19900, totalPaise: 99900 };
+    expect(checkoutFormKey({ lines, price: base })).toBe(checkoutFormKey({ lines, price: { ...base } }));
+    expect(checkoutFormKey({ lines, price: base })).not.toBe(checkoutFormKey({ lines, price: withOffer }));
+    expect(checkoutFormKey({ lines, price: base })).not.toBe(checkoutFormKey({ lines: [{ ...lines[0], quantity: 1 }], price: base }));
   });
 });

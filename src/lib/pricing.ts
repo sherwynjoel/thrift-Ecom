@@ -63,16 +63,22 @@ export function couponDiscount(coupon: PricingCoupon, subtotalPaise: number): nu
   return Math.max(0, Math.min(capped, subtotalPaise));
 }
 
+/**
+ * One message for every reason a code can't be used except the minimum-subtotal hint: distinct
+ * messages (unknown vs inactive vs expired vs used up) would let anyone probe which codes exist.
+ */
+export const COUPON_UNAVAILABLE = "This code can't be applied";
+
 export function couponProblem(
   coupon: PricingCoupon,
   subtotalPaise: number,
   ctx: Pick<PricingContext, "now" | "couponUsesTotal" | "couponUsesByUser">,
 ): string | null {
-  if (!coupon.active) return "This code is not active";
-  if (coupon.startsAt && ctx.now < coupon.startsAt) return "This code is not active yet";
-  if (coupon.endsAt && ctx.now > coupon.endsAt) return "This code has expired";
-  if (coupon.usageLimit !== null && (ctx.couponUsesTotal ?? 0) >= coupon.usageLimit) return "This code has reached its usage limit";
-  if (coupon.perUserLimit !== null && (ctx.couponUsesByUser ?? 0) >= coupon.perUserLimit) return "You have already used this code";
+  if (!coupon.active) return COUPON_UNAVAILABLE;
+  if (coupon.startsAt && ctx.now < coupon.startsAt) return COUPON_UNAVAILABLE;
+  if (coupon.endsAt && ctx.now > coupon.endsAt) return COUPON_UNAVAILABLE;
+  if (coupon.usageLimit !== null && (ctx.couponUsesTotal ?? 0) >= coupon.usageLimit) return COUPON_UNAVAILABLE;
+  if (coupon.perUserLimit !== null && (ctx.couponUsesByUser ?? 0) >= coupon.perUserLimit) return COUPON_UNAVAILABLE;
   if (subtotalPaise < coupon.minSubtotalPaise) return `Add ${formatPaise(coupon.minSubtotalPaise - subtotalPaise)} more to use this code`;
   return null;
 }

@@ -54,7 +54,7 @@ describe("placeOrder", () => {
     const { user, address } = await buyer();
     const bad = await placeOrder(user.id, { addressId: address.id, couponCode: "NOPE" }).catch((e) => e);
     expect(bad).toBeInstanceOf(ValidationError);
-    expect(bad.details.couponCode).toEqual(["This code is not valid"]);
+    expect(bad.details.couponCode).toEqual(["This code can't be applied"]);
     const other = await buyer();
     await expect(placeOrder(user.id, { addressId: other.address.id })).rejects.toBeInstanceOf(ValidationError);
     const lonely = await createUser();

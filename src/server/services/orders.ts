@@ -11,7 +11,7 @@ import type { Page } from "@/server/services/catalog";
 import { canCancel, isPaidStatus, ORDER_STATUS_LABEL, PAID_STATUSES, TO_SHIP_STATUSES, type OrderEventType } from "@/lib/order-status";
 import { formatPaise } from "@/lib/money";
 import { variantImageUrl } from "@/lib/variant-image";
-import type { PricingLine } from "@/lib/pricing";
+import { COUPON_UNAVAILABLE, type PricingLine } from "@/lib/pricing";
 
 export { variantImageUrl };
 
@@ -188,14 +188,14 @@ async function checkCouponUsage(tx: Tx, code: string, userId: string, now: Date,
   const pendingWhere = { couponCode: code, status: "PENDING_PAYMENT" as const, expiresAt: { gt: now } } satisfies Prisma.OrderWhereInput;
   if (coupon.usageLimit !== null) {
     const [paid, pending] = await Promise.all([tx.order.count({ where: paidWhere }), tx.order.count({ where: pendingWhere })]);
-    if (paid + pending >= coupon.usageLimit) throw new ValidationError({ couponCode: ["This code has reached its usage limit"] });
+    if (paid + pending >= coupon.usageLimit) throw new ValidationError({ couponCode: [COUPON_UNAVAILABLE] });
   }
   if (coupon.perUserLimit !== null) {
     const [paid, pending] = await Promise.all([
       tx.order.count({ where: { ...paidWhere, userId } }),
       tx.order.count({ where: { ...pendingWhere, userId } }),
     ]);
-    if (paid + pending >= coupon.perUserLimit) throw new ValidationError({ couponCode: ["You have already used this code"] });
+    if (paid + pending >= coupon.perUserLimit) throw new ValidationError({ couponCode: [COUPON_UNAVAILABLE] });
   }
 }
 
@@ -425,15 +425,17 @@ export type PaymentSource = "client" | "webhook" | "mock";
 export type MarkPaidOutcome = "paid" | "already_paid" | "attention" | "amount_mismatch";
 
 export async function markOrderPaid(
-  orderId: string, paymentId: string, source: PaymentSource, opts: { amountPaise?: number } = {},
+  orderId: string, paymentId: string, source: PaymentSource, opts: { amountPaise?: number | null } = {},
 ): Promise<{ outcome: MarkPaidOutcome; number: string }> {
   const order = await db.order.findUnique({ where: { id: orderId }, include: { items: true } });
   if (!order) throw new NotFoundError("Order");
   const number = order.number;
   if (isPaidStatus(order.status) || order.status === "REFUNDED") return { outcome: "already_paid", number };
 
+  // `null` = the source reported a payment but no amount (never trusted as a match).
   if (opts.amountPaise !== undefined && opts.amountPaise !== order.totalPaise) {
-    await flagAttentionOnce(order.id, `Payment ${paymentId} was for ${formatPaise(opts.amountPaise)} but the order total is ${formatPaise(order.totalPaise)}. Check it in the payment dashboard.`);
+    const what = opts.amountPaise === null ? "arrived without an amount" : `was for ${formatPaise(opts.amountPaise)}`;
+    await flagAttentionOnce(order.id, `Payment ${paymentId} ${what} but the order total is ${formatPaise(order.totalPaise)}. Check it in the payment dashboard.`);
     return { outcome: "amount_mismatch", number };
   }
 
@@ -493,8 +495,24 @@ export async function markOrderPaid(
   return { outcome: "attention", number };
 }
 
-export async function recordPaymentFailure(orderId: string, reason: string): Promise<void> {
-  await addOrderEvent(db, orderId, "PAYMENT_FAILED", reason.slice(0, 300));
+/**
+ * Notes a failed or rejected payment attempt on the order timeline — only while the order is still
+ * awaiting payment (a late or redelivered failure must not clutter a paid/cancelled order), and at
+ * most once per payment id. The order row lock serializes concurrent webhook redeliveries, so the
+ * "already recorded?" check and the insert can't interleave. `reason` should mention `paymentId`.
+ * Returns whether an event was written.
+ */
+export async function recordPaymentFailure(orderId: string, reason: string, paymentId?: string | null): Promise<boolean> {
+  return db.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<{ status: OrderStatus }[]>`SELECT status FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+    if (rows[0]?.status !== "PENDING_PAYMENT") return false;
+    if (paymentId) {
+      const seen = await tx.orderEvent.findFirst({ where: { orderId, type: "PAYMENT_FAILED", message: { contains: paymentId } }, select: { id: true } });
+      if (seen) return false;
+    }
+    await addOrderEvent(tx, orderId, "PAYMENT_FAILED", reason.slice(0, 300));
+    return true;
+  });
 }
 
 export async function findOrderByProviderOrderId(providerOrderId: string) {
