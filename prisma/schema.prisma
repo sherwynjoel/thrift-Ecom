@@ -223,6 +223,11 @@ model Order {
   email             String
   status            OrderStatus  @default(PENDING_PAYMENT)
   needsAttention    Boolean      @default(false)
+  // True while this order's items are actually decremented from stock. Flipped to false by
+  // restockOrderItems (via releaseOrder on cancel/expire) so a later release never restocks twice,
+  // and by the "paid after expiry, could not re-reserve" path in markOrderPaid so a PAID order that
+  // never actually re-took its stock cannot later fabricate phantom stock on cancel/refund.
+  stockReserved     Boolean      @default(true)
   shipName          String
   shipPhone         String
   shipLine1         String

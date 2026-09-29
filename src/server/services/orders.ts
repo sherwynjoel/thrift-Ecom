@@ -8,7 +8,7 @@ import { quote } from "@/server/services/promotions";
 import { addOrderEvent, orderWithItems, toOrderSummary, toOrderView, type OrderSummary, type OrderView, type Tx } from "@/server/services/order-records";
 import { notifyOrder } from "@/server/services/notifications";
 import type { Page } from "@/server/services/catalog";
-import { canCancel, isPaidStatus, ORDER_STATUS_LABEL, TO_SHIP_STATUSES, type OrderEventType } from "@/lib/order-status";
+import { canCancel, isPaidStatus, ORDER_STATUS_LABEL, PAID_STATUSES, TO_SHIP_STATUSES, type OrderEventType } from "@/lib/order-status";
 import { formatPaise } from "@/lib/money";
 import { variantImageUrl } from "@/lib/variant-image";
 import type { PricingLine } from "@/lib/pricing";
@@ -90,6 +90,53 @@ function snapshot(l: CheckoutLineRow) {
   };
 }
 
+/** Stable lock/decrement order for any list of {variantId}: avoids 40P01 deadlocks between two transactions touching the same variants in opposite orders. */
+function byVariantId<T extends { variantId: string | null }>(items: T[]): T[] {
+  return [...items].sort((a, b) => (a.variantId ?? "").localeCompare(b.variantId ?? ""));
+}
+
+/**
+ * A new checkout attempt supersedes the user's own still-open pending orders instead of leaving
+ * them to compete with the fresh one for the same stock (which otherwise makes `reconcileCartStock`
+ * see the user's own reservation as "sold out" and strip it from their bag). A payment that still
+ * lands on a superseded order is handled by the existing EXPIRED re-reserve path in `markOrderPaid`.
+ */
+async function supersedeOpenOrders(userId: string): Promise<void> {
+  const open = await db.order.findMany({ where: { userId, status: "PENDING_PAYMENT" }, select: { id: true } });
+  for (const o of open) {
+    await releaseOrder(o.id, ["PENDING_PAYMENT"], "EXPIRED", "EXPIRED", "Superseded by a new checkout");
+  }
+}
+
+/**
+ * Re-checks a coupon's usage limits against live data, inside the same transaction that reserves
+ * stock and creates the order, while holding a row lock on the coupon. `quote()`'s check (above)
+ * only reflects the state at the time the page loaded a quote; without this, N concurrent checkouts
+ * can all pass that check and all use a `usageLimit: 1` coupon. Counts paid-like orders plus other
+ * unexpired PENDING_PAYMENT orders already holding the code, so two carts racing for the same
+ * single-use coupon can't both win.
+ */
+async function assertCouponStillValid(tx: Tx, code: string, userId: string, now: Date): Promise<void> {
+  const rows = await tx.$queryRaw<{ usageLimit: number | null; perUserLimit: number | null }[]>`
+    SELECT "usageLimit", "perUserLimit" FROM "Coupon" WHERE code = ${code} FOR UPDATE
+  `;
+  const coupon = rows[0];
+  if (!coupon || (coupon.usageLimit === null && coupon.perUserLimit === null)) return;
+  const paidWhere = { couponCode: code, status: { in: [...PAID_STATUSES] } } satisfies Prisma.OrderWhereInput;
+  const pendingWhere = { couponCode: code, status: "PENDING_PAYMENT" as const, expiresAt: { gt: now } } satisfies Prisma.OrderWhereInput;
+  if (coupon.usageLimit !== null) {
+    const [paid, pending] = await Promise.all([tx.order.count({ where: paidWhere }), tx.order.count({ where: pendingWhere })]);
+    if (paid + pending >= coupon.usageLimit) throw new ValidationError({ couponCode: ["This code has reached its usage limit"] });
+  }
+  if (coupon.perUserLimit !== null) {
+    const [paid, pending] = await Promise.all([
+      tx.order.count({ where: { ...paidWhere, userId } }),
+      tx.order.count({ where: { ...pendingWhere, userId } }),
+    ]);
+    if (paid + pending >= coupon.perUserLimit) throw new ValidationError({ couponCode: ["You have already used this code"] });
+  }
+}
+
 export async function placeOrder(userId: string, input: unknown): Promise<CheckoutPayload> {
   const parsed = placeOrderSchema.safeParse(input);
   if (!parsed.success) throw new ValidationError(zodFieldErrors(parsed.error));
@@ -101,6 +148,8 @@ export async function placeOrder(userId: string, input: unknown): Promise<Checko
   if (!user) throw new NotFoundError("User");
   const address = await db.address.findFirst({ where: { id: addressId, userId } });
   if (!address) throw new ValidationError({ addressId: ["Choose a delivery address"] });
+
+  await supersedeOpenOrders(userId);
 
   const loaded = await loadCheckoutLines(userId);
   if (loaded.length === 0) throw new ValidationError({ cart: ["Your bag is empty"] });
@@ -115,7 +164,10 @@ export async function placeOrder(userId: string, input: unknown): Promise<Checko
   const provider = getPaymentProvider();
 
   const order = await db.$transaction(async (tx) => {
-    for (const l of rows) {
+    if (price.applied === "coupon" && price.coupon) {
+      await assertCouponStillValid(tx, price.coupon.code, userId, now);
+    }
+    for (const l of byVariantId(rows)) {
       const r = await tx.productVariant.updateMany({ where: { id: l.variantId, stock: { gte: l.quantity } }, data: { stock: { decrement: l.quantity } } });
       if (r.count !== 1) {
         const fresh = await tx.productVariant.findUnique({ where: { id: l.variantId }, select: { stock: true } });
@@ -157,12 +209,19 @@ export async function placeOrder(userId: string, input: unknown): Promise<Checko
 }
 
 /**
- * Restocks every item of an order whose variant still exists. Shared by `releaseOrder` (cancel /
- * expire, below) and Task 9's `refundOrder` — the only two places stock is ever put back.
+ * Restocks every item of an order whose variant still exists — but only when the order still
+ * actually holds that stock. `Order.stockReserved` (flipped to false here, and by the "paid after
+ * expiry, could not re-reserve" path in `markOrderPaid`) makes this exactly-once and prevents
+ * phantom stock: an order that was marked PAID without ever re-taking its stock must not hand stock
+ * back on a later cancel/refund, and an order already restocked once must not be restocked again.
+ * Shared by `releaseOrder` (cancel/expire, below) and Task 9's `refundOrder` — the only two places
+ * stock is ever put back.
  */
 export async function restockOrderItems(tx: Tx, orderId: string): Promise<void> {
+  const flip = await tx.order.updateMany({ where: { id: orderId, stockReserved: true }, data: { stockReserved: false } });
+  if (flip.count !== 1) return;
   const items = await tx.orderItem.findMany({ where: { orderId, variantId: { not: null } }, select: { variantId: true, quantity: true } });
-  for (const it of items) {
+  for (const it of byVariantId(items)) {
     await tx.productVariant.updateMany({ where: { id: it.variantId! }, data: { stock: { increment: it.quantity } } });
   }
 }
@@ -200,10 +259,19 @@ export async function cancelOrder(orderId: string, opts: { actorId?: string | nu
 
 class ReReserveFailed extends Error {}
 
-async function flagAttention(orderId: string, message: string, extra: { providerPaymentId?: string } = {}): Promise<void> {
-  await db.$transaction(async (tx) => {
-    await tx.order.update({ where: { id: orderId }, data: { needsAttention: true, ...extra } });
+/**
+ * Flags an order for attention exactly once: the update only takes effect while `needsAttention`
+ * is still false, so two concurrent callers (a webhook and a client verify racing, or a repeated
+ * webhook retry) can't both write an ATTENTION event, and `extra` (e.g. `providerPaymentId`) is only
+ * ever written by whichever caller wins that transition — never overwritten by a later one.
+ * Returns whether this call was the one that flagged it.
+ */
+async function flagAttentionOnce(orderId: string, message: string, extra: { providerPaymentId?: string } = {}): Promise<boolean> {
+  return db.$transaction(async (tx) => {
+    const u = await tx.order.updateMany({ where: { id: orderId, needsAttention: false }, data: { needsAttention: true, ...extra } });
+    if (u.count !== 1) return false;
     await addOrderEvent(tx, orderId, "ATTENTION", message);
+    return true;
   });
 }
 
@@ -230,7 +298,7 @@ export async function markOrderPaid(
   if (isPaidStatus(order.status) || order.status === "REFUNDED") return { outcome: "already_paid", number };
 
   if (opts.amountPaise !== undefined && opts.amountPaise !== order.totalPaise) {
-    await flagAttention(order.id, `Payment ${paymentId} was for ${formatPaise(opts.amountPaise)} but the order total is ${formatPaise(order.totalPaise)}. Check it in the payment dashboard.`);
+    await flagAttentionOnce(order.id, `Payment ${paymentId} was for ${formatPaise(opts.amountPaise)} but the order total is ${formatPaise(order.totalPaise)}. Check it in the payment dashboard.`);
     return { outcome: "amount_mismatch", number };
   }
 
@@ -251,9 +319,9 @@ export async function markOrderPaid(
   if (order.status === "EXPIRED") {
     const result = await db
       .$transaction(async (tx) => {
-        const u = await tx.order.updateMany({ where: { id: order.id, status: "EXPIRED" }, data: paid });
+        const u = await tx.order.updateMany({ where: { id: order.id, status: "EXPIRED" }, data: { ...paid, stockReserved: true } });
         if (u.count !== 1) return "changed" as const;
-        for (const it of order.items) {
+        for (const it of byVariantId(order.items)) {
           if (!it.variantId) throw new ReReserveFailed();
           const r = await tx.productVariant.updateMany({ where: { id: it.variantId, stock: { gte: it.quantity } }, data: { stock: { decrement: it.quantity } } });
           if (r.count !== 1) throw new ReReserveFailed();
@@ -282,9 +350,24 @@ export async function markOrderPaid(
     return { outcome: "paid", number };
   }
 
-  // CANCELLED: money arrived for an order that no longer holds stock. Record it once; the admin refunds.
-  if (!(order.needsAttention && order.providerPaymentId === paymentId)) {
-    await flagAttention(order.id, `Payment ${paymentId} arrived for a ${ORDER_STATUS_LABEL[order.status].toLowerCase()} order. Refund it from the order page.`, { providerPaymentId: paymentId });
+  // CANCELLED (or otherwise terminal, non-paid): money arrived for an order that no longer holds
+  // stock. Flag it once and keep the first payment id — the admin refunds using it. A second,
+  // different payment id landing later (e.g. a duplicate charge) is noted, never used to overwrite it.
+  const flagged = await flagAttentionOnce(
+    order.id,
+    `Payment ${paymentId} arrived for a ${ORDER_STATUS_LABEL[order.status].toLowerCase()} order. Refund it from the order page.`,
+    { providerPaymentId: paymentId },
+  );
+  if (!flagged) {
+    const current = await db.order.findUnique({ where: { id: order.id }, select: { providerPaymentId: true } });
+    if (current && current.providerPaymentId !== paymentId) {
+      await addOrderEvent(
+        db,
+        order.id,
+        "NOTE",
+        `Another payment ${paymentId} also arrived for this ${ORDER_STATUS_LABEL[order.status].toLowerCase()} order; it still flags ${current.providerPaymentId ?? "an earlier payment"} for refund.`,
+      );
+    }
   }
   return { outcome: "attention", number };
 }

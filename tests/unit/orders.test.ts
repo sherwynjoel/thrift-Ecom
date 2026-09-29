@@ -86,6 +86,72 @@ describe("placeOrder", () => {
     expect(o.events.map((e) => e.type)).toContain("PAYMENT_FAILED");
     expect(await stockOf(variant.id)).toBe(5);
   });
+
+  it("supersedes the user's own pending order instead of starving their bag", async () => {
+    const { user, variant, address } = await buyer({ qty: 1, stock: 1 });
+    const first = await placeOrder(user.id, { addressId: address.id });
+    expect(await stockOf(variant.id)).toBe(0);
+    const second = await placeOrder(user.id, { addressId: address.id });
+    expect(second.number).not.toBe(first.number);
+    const firstOrder = await db.order.findUniqueOrThrow({ where: { id: first.orderId } });
+    expect(firstOrder.status).toBe("EXPIRED");
+    const pending = await db.order.findMany({ where: { userId: user.id, status: "PENDING_PAYMENT" } });
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.id).toBe(second.orderId);
+    expect(await stockOf(variant.id)).toBe(0);
+    const cart = await db.cartItem.findMany({ where: { cart: { userId: user.id } } });
+    expect(cart).toHaveLength(1);
+  });
+
+  it("lets only one of two concurrent buyers win the last unit", async () => {
+    const product = await createProduct({ variants: [{ size: "M", colorName: "Black", stock: 1 }] });
+    const variant = product.variants[0]!;
+    const buyerA = await createUser();
+    const buyerB = await createUser();
+    const addrA = await createAddress(buyerA.id, ADDRESS);
+    const addrB = await createAddress(buyerB.id, ADDRESS);
+    await addItem({ userId: buyerA.id }, variant.id, 1);
+    await addItem({ userId: buyerB.id }, variant.id, 1);
+    const results = await Promise.allSettled([
+      placeOrder(buyerA.id, { addressId: addrA.id }),
+      placeOrder(buyerB.id, { addressId: addrB.id }),
+    ]);
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toBeInstanceOf(StockChangedError);
+    expect(await stockOf(variant.id)).toBe(0);
+    expect(await db.order.count()).toBe(1);
+  });
+
+  it("rolls back an earlier line's decrement when a later line's stock vanishes mid-transaction", async () => {
+    const user = await createUser();
+    const address = await createAddress(user.id, ADDRESS);
+    const productA = await createProduct({ variants: [{ size: "M", colorName: "Black", stock: 5 }] });
+    const variantA = productA.variants[0]!;
+    const productB = await createProduct({ variants: [{ size: "L", colorName: "White", stock: 5 }] });
+    const variantB = productB.variants[0]!;
+    await addItem({ userId: user.id }, variantA.id, 1);
+    await addItem({ userId: user.id }, variantB.id, 1);
+
+    // Holds a real row lock on variantB for 80ms so placeOrder's own transaction blocks trying to
+    // decrement it, then commits stock:0 — a genuine external write landing strictly after
+    // reconcileCartStock's (pre-transaction) read but before the in-transaction decrement. This
+    // must roll back any earlier decrement (variantA) in the same transaction.
+    const blockerTx = db.$transaction(async (tx) => {
+      await tx.productVariant.update({ where: { id: variantB.id }, data: { stock: 0 } });
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    });
+
+    const err = await placeOrder(user.id, { addressId: address.id }).catch((e) => e);
+    await blockerTx;
+
+    expect(err).toBeInstanceOf(StockChangedError);
+    expect(await stockOf(variantA.id)).toBe(5);
+    expect(await stockOf(variantB.id)).toBe(0);
+    expect(await db.order.count()).toBe(0);
+  });
 });
 
 describe("markOrderPaid", () => {
@@ -145,6 +211,32 @@ describe("markOrderPaid", () => {
     expect((await markOrderPaid(p.orderId, "pay_c", "webhook")).outcome).toBe("attention");
     expect(await db.order.findUniqueOrThrow({ where: { id: p.orderId } })).toMatchObject({ status: "CANCELLED", needsAttention: true, providerPaymentId: "pay_c" });
   });
+
+  it("does not fabricate phantom stock when a 'needs attention' late payment is later cancelled", async () => {
+    const { user, variant, address } = await buyer({ qty: 2 });
+    const p = await placeOrder(user.id, { addressId: address.id });
+    await expireStaleOrders(later());
+    await db.productVariant.update({ where: { id: variant.id }, data: { stock: 1 } });
+    expect((await markOrderPaid(p.orderId, "pay_late", "webhook")).outcome).toBe("attention");
+    expect(await stockOf(variant.id)).toBe(1);
+    await cancelOrder(p.orderId, { reason: "refund needed" });
+    expect(await stockOf(variant.id)).toBe(1);
+    expect((await db.order.findUniqueOrThrow({ where: { id: p.orderId } })).status).toBe("CANCELLED");
+  });
+
+  it("resolves a concurrent client+webhook payment to exactly one PAID transition", async () => {
+    const { user, variant, address } = await buyer({ qty: 2 });
+    const p = await placeOrder(user.id, { addressId: address.id });
+    const [a, b] = await Promise.all([
+      markOrderPaid(p.orderId, "pay_1", "client"),
+      markOrderPaid(p.orderId, "pay_1", "webhook"),
+    ]);
+    expect([a.outcome, b.outcome].sort()).toEqual(["already_paid", "paid"]);
+    const o = await db.order.findUniqueOrThrow({ where: { id: p.orderId }, include: { events: true } });
+    expect(o.status).toBe("PAID");
+    expect(o.events.filter((e) => e.type === "PAID")).toHaveLength(1);
+    expect(await stockOf(variant.id)).toBe(3);
+  });
 });
 
 describe("expiry and cancel", () => {
@@ -180,6 +272,14 @@ describe("expiry and cancel", () => {
     await db.order.update({ where: { id: pq.orderId }, data: { status: "SHIPPED" } });
     await expect(cancelOrder(pq.orderId)).rejects.toBeInstanceOf(ConflictError);
   });
+
+  it("runs two expiry sweeps concurrently without double-restocking", async () => {
+    const { user, variant, address } = await buyer({ qty: 2 });
+    await placeOrder(user.id, { addressId: address.id });
+    const [a, b] = await Promise.all([expireStaleOrders(later()), expireStaleOrders(later())]);
+    expect(a + b).toBe(1);
+    expect(await stockOf(variant.id)).toBe(5);
+  });
 });
 
 describe("customer reads and retry", () => {
@@ -203,5 +303,16 @@ describe("customer reads and retry", () => {
     expect(await getRetryPayload(user.id, p.number)).toMatchObject({ orderId: p.orderId, providerOrderId: p.providerOrderId, amountPaise: 67800 });
     await markOrderPaid(p.orderId, "pay_1", "client");
     await expect(getRetryPayload(user.id, p.number)).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("keeps retry and list scoped to the owner even when another user has orders", async () => {
+    const { user, address } = await buyer();
+    const p = await placeOrder(user.id, { addressId: address.id });
+    const other = await buyer();
+    await placeOrder(other.user.id, { addressId: other.address.id });
+    await expect(getRetryPayload(other.user.id, p.number)).rejects.toBeInstanceOf(NotFoundError);
+    const page = await listOrdersForUser(user.id);
+    expect(page.total).toBe(1);
+    expect(page.items).toHaveLength(1);
   });
 });
