@@ -54,4 +54,24 @@ describe("admin images service", () => {
     const p = await createProduct({ images: [{ url: "/seed/keep.svg" }] });
     await expect(deleteProductImage(p.images[0].id)).resolves.toEqual({ productId: p.id });
   });
+
+  it("rolls back all inserted rows and stored files when any upload in the batch fails", async () => {
+    const p = await createProduct({ images: [] });
+    const originalPut = storage.put.bind(storage);
+    const keys: string[] = [];
+    let calls = 0;
+    const spy = vi.spyOn(storage, "put").mockImplementation(async (key: string, bytes: Uint8Array, contentType: string) => {
+      keys.push(key);
+      calls++;
+      if (calls === 2) throw new Error("disk full");
+      return originalPut(key, bytes, contentType);
+    });
+    try {
+      await expect(addProductImages(p.id, [png(), png()])).rejects.toThrow("disk full");
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await db.productImage.count({ where: { productId: p.id } })).toBe(0);
+    expect(existsSync(join(root, keys[0]))).toBe(false);
+  });
 });

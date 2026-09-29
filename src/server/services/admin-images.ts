@@ -26,10 +26,26 @@ export async function addProductImages(productId: string, files: File[]): Promis
   const max = await db.productImage.aggregate({ where: { productId }, _max: { sortOrder: true } });
   let next = (max._max.sortOrder ?? -1) + 1;
   const created: AdminImage[] = [];
-  for (const f of files) {
-    const { url } = await storeImage(f, `products/${productId}`);
-    const row = await db.productImage.create({ data: { productId, url, alt: product.name, sortOrder: next++ } });
-    created.push(toAdmin(row));
+  const stored: { rowId: string; key: string }[] = [];
+  try {
+    for (const f of files) {
+      const { url, key } = await storeImage(f, `products/${productId}`);
+      const row = await db.productImage.create({ data: { productId, url, alt: product.name, sortOrder: next++ } });
+      stored.push({ rowId: row.id, key });
+      created.push(toAdmin(row));
+    }
+  } catch (err) {
+    if (stored.length) {
+      await db.productImage.deleteMany({ where: { id: { in: stored.map((s) => s.rowId) } } });
+      for (const { key } of stored) {
+        try {
+          await getStorage().delete(key);
+        } catch (cleanupErr) {
+          console.error("[admin-images] could not clean up stored file after failed batch", key, cleanupErr);
+        }
+      }
+    }
+    throw err;
   }
   return created;
 }
