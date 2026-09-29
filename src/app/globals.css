@@ -1,26 +1,106 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
+/* ---- Brand tokens (spec section 4) ---- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #0A0A0A;
+  --surface: #141414;
+  --surface-raised: #1C1C1C;
+  --border: #2A2A2A;
+  --text: #F5F5F0;
+  --text-muted: #9A9A93;
+  --accent: #D4FF3F;
+  --accent-ink: #0A0A0A;
+  --danger: #FF4D4D;
+  --radius: 2px;
+  --marquee-duration: 30s;
 }
 
+/* ---- Tailwind theme: brand utilities + shadcn semantics on the same palette ---- */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-brand: var(--accent);
+  --color-brand-ink: var(--accent-ink);
+  --color-danger: var(--danger);
+
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface-raised);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-ink);
+  --color-secondary: var(--surface-raised);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--surface);
+  --color-muted-foreground: var(--text-muted);
+  --color-accent: var(--surface-raised);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: var(--text);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--accent);
+
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 4px;
+  --radius-xl: 8px;
+
+  --font-display: var(--font-bebas), Impact, "Arial Narrow", sans-serif;
+  --font-sans: var(--font-grotesk), system-ui, sans-serif;
+
+  --animate-marquee: marquee var(--marquee-duration) linear infinite;
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes accordion-down {
+  from { height: 0; }
+  to { height: var(--accordion-panel-height, auto); }
+}
+
+@keyframes accordion-up {
+  from { height: var(--accordion-panel-height, auto); }
+  to { height: 0; }
+}
+
+/* ---- Base ---- */
+@layer base {
+  * { @apply border-border; }
+  html { color-scheme: dark; scroll-behavior: auto; }
+  body { @apply bg-bg text-text font-sans antialiased; }
+  h1, h2, h3, .display { @apply font-display uppercase tracking-tight; }
+  ::selection { background: var(--accent); color: var(--accent-ink); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--surface-raised); border: 2px solid var(--bg); border-radius: 8px; }
+}
+
+/* ---- Utilities ---- */
+@utility container-x {
+  @apply mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-10;
+}
+
+@utility text-balance {
+  text-wrap: balance;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }

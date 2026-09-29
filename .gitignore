@@ -20,3 +20,6 @@ coverage/
 
 # Superpowers SDD scratch
 .superpowers/
+
+# alternate dev build dir (NEXT_DIST_DIR)
+.next-dev/

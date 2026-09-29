@@ -1,9 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { db } from "@/server/db";
+import { MAX_QTY_PER_LINE } from "@/lib/catalog-types";
 import { NotFoundError, OutOfStockError, ValidationError } from "@/server/errors";
 
 export type CartRef = { userId: string } | { guestToken: string };
-export const MAX_QTY_PER_LINE = 10;
+export { MAX_QTY_PER_LINE };
 
 export interface CartLine {
   id: string;
