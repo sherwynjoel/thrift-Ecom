@@ -8,13 +8,15 @@ Custom T-shirt e-commerce: animated storefront, persistent cart, accounts, admin
 2. `cp .env.example .env` and set `AUTH_SECRET` (`openssl rand -base64 32`)
 3. `npm install`
 4. `npm run db:migrate` then `npm run db:seed`
-5. `npm run dev` — http://localhost:3000
+5. `npm run db:test:migrate` — applies migrations to the `thrift_test` database used by `npm test`
+6. `npm run dev` — http://localhost:3000
 
 ## Scripts
 
 - `npm run dev` / `build` / `start`
 - `npm run lint`, `npm run typecheck`, `npm test`
-- `npm run db:migrate`, `npm run db:seed`, `npm run db:studio`
+- `npm run db:migrate`, `npm run db:test:migrate`, `npm run db:seed`, `npm run db:studio`
+- `npm run db:seed` is a development tool: it upserts the seed collections (overwriting their name, description, and flags) and skips products that already exist.
 
 ## Docs
 
