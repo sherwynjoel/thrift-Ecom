@@ -37,3 +37,10 @@ test("checkout placeholder shows the bag summary", async ({ page }) => {
   await page.goto("/checkout");
   await expect(page.getByTestId("checkout-placeholder")).toBeVisible();
 });
+
+test("clicking checkout in the drawer navigates and closes the drawer", async ({ page }) => {
+  await addFirstProductToBag(page);
+  await page.getByTestId("cart-drawer").getByRole("button", { name: /^checkout$/i }).click();
+  await expect(page).toHaveURL(/\/checkout/);
+  await expect(page.getByTestId("cart-drawer")).toBeHidden();
+});
