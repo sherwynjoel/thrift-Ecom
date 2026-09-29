@@ -7,6 +7,10 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname),
   // Markdown pages are read from disk at request time; make sure serverless/standalone builds ship them.
   outputFileTracingIncludes: { "/**": ["./content/**/*"] },
+  experimental: {
+    // Server Actions default to a 1 MB body; image uploads allow up to 10 x 5 MB.
+    serverActions: { bodySizeLimit: "55mb" },
+  },
   images: {
     dangerouslyAllowSVG: true,
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",

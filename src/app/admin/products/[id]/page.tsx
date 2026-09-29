@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DeleteProductButton } from "@/components/admin/delete-product-button";
+import { ImageManager } from "@/components/admin/image-manager";
 import { ProductEditor } from "@/components/admin/product-editor";
 import { StatusBadge } from "@/components/admin/status-badge";
 import { NotFoundError } from "@/server/errors";
@@ -29,6 +30,7 @@ export default async function EditProductPage({ params }: Props) {
         {product.status === "ACTIVE" && <Link href={`/products/${product.slug}`} target="_blank" className="text-sm underline-offset-4 hover:underline" data-testid="view-on-store">View on store ↗</Link>}
       </div>
       <ProductEditor key={product.variants.map((v) => `${v.id}:${v.stock}:${v.pricePaise}`).join()} product={product} collections={collections} />
+      <ImageManager productId={product.id} images={product.images} colorNames={[...new Set(product.variants.map((v) => v.colorName))]} />
       <section className="rounded-md border border-danger/40 p-5">
         <h2 className="mb-2 text-xl">Danger zone</h2>
         <DeleteProductButton id={product.id} status={product.status} />
