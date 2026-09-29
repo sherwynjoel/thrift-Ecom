@@ -4,10 +4,13 @@ test("filters and sort update the url and the grid", async ({ page }) => {
   await page.goto("/collections/oversized-tees");
   await expect(page.getByTestId("product-grid")).toBeVisible();
   const before = await page.getByTestId("result-count").textContent();
+  expect(before).toMatch(/\d+ products/);
 
   await page.getByTestId("filter-rail").getByRole("button", { name: "M", exact: true }).first().click();
   await expect(page).toHaveURL(/size=M/);
   await expect(page.getByTestId("result-count")).toBeVisible();
+  const afterFilter = await page.getByTestId("result-count").textContent();
+  expect(afterFilter).toMatch(/\d+ products/);
   await expect(page.getByTestId("product-grid").getByTestId("product-card").first()).toBeVisible();
 
   await page.getByTestId("sort-select").click();
@@ -22,7 +25,7 @@ test("filters and sort update the url and the grid", async ({ page }) => {
 
   await page.getByTestId("clear-filters").first().click();
   await expect(page).not.toHaveURL(/size=/);
-  expect(before).toMatch(/\d+ products/);
+  await expect(page.getByTestId("result-count")).toHaveText(before!);
 });
 
 test("collections index lists every collection", async ({ page }) => {

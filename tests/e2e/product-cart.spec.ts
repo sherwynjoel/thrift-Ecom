@@ -36,6 +36,8 @@ test("checkout placeholder shows the bag summary", async ({ page }) => {
   await addFirstProductToBag(page);
   await page.goto("/checkout");
   await expect(page.getByTestId("checkout-placeholder")).toBeVisible();
+  const itemsRow = page.locator("dl > div").filter({ hasText: "Items" });
+  await expect(itemsRow.locator("dd")).not.toHaveText("0");
 });
 
 test("clicking checkout in the drawer navigates and closes the drawer", async ({ page }) => {
