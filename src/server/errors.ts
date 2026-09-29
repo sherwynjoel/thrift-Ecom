@@ -46,6 +46,12 @@ export class ValidationError extends DomainError {
   }
 }
 
+export class RateLimitedError extends DomainError {
+  constructor(public readonly retryAfterSec: number) {
+    super("RATE_LIMITED", "Too many attempts, try again shortly", 429, { retryAfterSec });
+  }
+}
+
 export type ErrorBody = {
   error: { code: string; message: string; details?: unknown };
 };

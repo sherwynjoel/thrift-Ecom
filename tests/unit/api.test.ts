@@ -109,4 +109,16 @@ describe("/api/v1", () => {
     const view = await (await getCart(req("/api/v1/cart", { headers: auth }), params({}))).json();
     expect(view.data.itemCount).toBe(2);
   });
+
+  it("rate limits login per client ip and sends Retry-After", async () => {
+    const ip = `10.0.0.${Math.floor(Math.random() * 250)}`;
+    const headers = { "x-forwarded-for": `1.2.3.4, ${ip}` };
+    let last: Response | undefined;
+    for (let i = 0; i < 61; i++) {
+      last = await login(req("/api/v1/auth/login", json({ email: "nobody@example.com", password: "wrong-pass" }, headers)), params({}));
+    }
+    expect(last!.status).toBe(429);
+    expect((await last!.json()).error.code).toBe("RATE_LIMITED");
+    expect(Number(last!.headers.get("Retry-After"))).toBeGreaterThan(0);
+  });
 });

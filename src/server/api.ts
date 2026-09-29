@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { ZodType } from "zod";
 import { randomBytes } from "node:crypto";
-import { toHttp, UnauthorizedError, ValidationError } from "@/server/errors";
+import { RateLimitedError, toHttp, UnauthorizedError, ValidationError } from "@/server/errors";
 import { verifyApiToken } from "@/server/api-token";
 import { getUserById, type PublicUser } from "@/server/services/auth";
 import type { CartRef } from "@/server/services/cart";
@@ -14,13 +14,29 @@ export function ok<T>(data: T, init?: ResponseInit): Response {
   return NextResponse.json({ data }, init);
 }
 
+/** Nearest-hop client IP. Trusts the LAST x-forwarded-for entry (set by our own reverse proxy), then x-real-ip. */
+export function clientIp(req: NextRequest): string {
+  const xff = req.headers.get("x-forwarded-for");
+  if (xff) {
+    const parts = xff.split(",").map((s) => s.trim()).filter(Boolean);
+    if (parts.length) return parts[parts.length - 1];
+  }
+  return req.headers.get("x-real-ip")?.trim() || "local";
+}
+
+function errorResponse(err: unknown): Response {
+  const { status, body } = toHttp(err);
+  const res = NextResponse.json(body, { status });
+  if (err instanceof RateLimitedError) res.headers.set("Retry-After", String(err.retryAfterSec));
+  return res;
+}
+
 export function handle(fn: (req: NextRequest, ctx: RouteCtx) => Promise<Response>) {
   return async (req: NextRequest, ctx: RouteCtx): Promise<Response> => {
     try {
       return await fn(req, ctx);
     } catch (err) {
-      const { status, body } = toHttp(err);
-      return NextResponse.json(body, { status });
+      return errorResponse(err);
     }
   };
 }
@@ -33,8 +49,7 @@ export function cartHandle(
     try {
       return withCartToken(await fn(req, ctx, { ref }), newGuestToken);
     } catch (err) {
-      const { status, body } = toHttp(err);
-      return withCartToken(NextResponse.json(body, { status }), newGuestToken);
+      return withCartToken(errorResponse(err), newGuestToken);
     }
   };
 }
