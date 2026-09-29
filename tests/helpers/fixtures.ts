@@ -5,6 +5,19 @@ import { slugify } from "@/lib/slug";
 let counter = 0;
 const next = () => ++counter;
 
+export async function createUser(
+  over: Partial<{ email: string; name: string; role: "CUSTOMER" | "ADMIN" }> = {},
+) {
+  const n = next();
+  return db.user.create({
+    data: {
+      email: over.email ?? `user${n}-${Date.now()}@example.test`,
+      name: over.name ?? `User ${n}`,
+      role: over.role ?? "CUSTOMER",
+    },
+  });
+}
+
 export async function createCollection(
   over: Partial<{ name: string; slug: string; isFeatured: boolean; isActive: boolean; sortOrder: number }> = {},
 ) {

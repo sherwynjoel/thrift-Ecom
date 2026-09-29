@@ -14,7 +14,7 @@
     "test:e2e:ui": "playwright test --ui",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
-    "db:test:migrate": "dotenv -e .env.test -- prisma migrate deploy",
+    "db:test:migrate": "dotenv run -f .env.test -- prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate"
