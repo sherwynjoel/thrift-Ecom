@@ -64,6 +64,7 @@ describe("productionConfigProblems (I2)", () => {
     expect(shouldCheckProductionConfig({ NEXT_RUNTIME: "nodejs", NODE_ENV: "development" })).toBe(false);
     expect(shouldCheckProductionConfig({ NEXT_RUNTIME: "nodejs", NODE_ENV: "test" })).toBe(false);
     expect(shouldCheckProductionConfig({ NEXT_RUNTIME: "edge", NODE_ENV: "production" })).toBe(false);
+    expect(shouldCheckProductionConfig({ NODE_ENV: "production" })).toBe(true);
   });
 
   it("exits the process on a bad production config at server start, and does nothing otherwise", () => {

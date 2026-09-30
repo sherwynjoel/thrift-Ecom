@@ -56,7 +56,7 @@ export function productionConfigProblems(env: Env): string[] {
 
 /** Only a production Node.js server is checked: not dev/test, not the edge runtime, not `next build`. */
 export function shouldCheckProductionConfig(env: Env): boolean {
-  return env.NEXT_RUNTIME === "nodejs" && env.NODE_ENV === "production" && env.NEXT_PHASE !== "phase-production-build";
+  return env.NEXT_RUNTIME !== "edge" && env.NODE_ENV === "production" && env.NEXT_PHASE !== "phase-production-build";
 }
 
 /** Throws (so the server refuses to start) when the production configuration is incomplete. */
