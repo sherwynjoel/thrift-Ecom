@@ -18,7 +18,7 @@ export function StudioSkeleton() {
           <Skeleton className="h-10 w-56" />
           <Skeleton className="h-[52px] w-[200px] rounded-full" />
         </div>
-        <Skeleton className="-mx-4 aspect-[4/5] rounded-none sm:mx-auto sm:w-full sm:max-w-[640px] sm:rounded-md md:max-w-[min(640px,calc((100dvh-12rem)*0.8))]" />
+        <Skeleton className="-mx-4 aspect-[4/5] rounded-none sm:mx-auto sm:w-full sm:max-w-[640px] sm:rounded-md md:max-w-[min(640px,calc((100dvh-16rem)*0.8))]" />
       </div>
       <Skeleton className="hidden h-[480px] md:block" />
     </div>
@@ -26,5 +26,6 @@ export function StudioSkeleton() {
 }
 
 export function StudioLoader(props: StudioProps) {
-  return <Studio {...props} />;
+  // A new ?design= on the same route must start a fresh editor (the canvas reads its initial design once).
+  return <Studio key={props.initialDesign?.designId ?? "new"} {...props} />;
 }

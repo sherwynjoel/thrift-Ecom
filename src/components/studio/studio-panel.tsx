@@ -9,12 +9,15 @@ export type StudioTab = "product" | "upload" | "text" | "layers";
  * Desktop: the right-hand tool column. Mobile: a non-modal bottom sheet (tab row + sticky price footer);
  * tapping a tab expands the content to at most 40dvh, the chevron collapses it. One DOM for both layouts.
  */
-export function StudioPanel({ tab, onTab, expanded, onExpanded, tabs, footer }: {
+export function StudioPanel({ tab, onTab, expanded, onExpanded, tabs, footer, sheetRef }: {
   tab: StudioTab; onTab: (t: StudioTab) => void; expanded: boolean; onExpanded: (v: boolean) => void;
   tabs: { id: StudioTab; label: string; content: React.ReactNode }[]; footer: React.ReactNode;
+  /** Lets the studio measure the mobile sheet so the stage can shrink to the space above it. */
+  sheetRef?: React.Ref<HTMLElement>;
 }) {
   return (
     <aside
+      ref={sheetRef}
       data-testid="studio-sheet"
       data-expanded={expanded}
       data-sticky-bar
