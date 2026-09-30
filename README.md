@@ -69,22 +69,28 @@ On the EC2 box (`crontab -e`, server clock in UTC; 21:00 IST = 15:30 UTC):
 
 1. **Orders → To ship** (default tab, oldest first). Select the batch → **Print labels** and **Print slips** (4×6 labels, A4 slips; one document per page) → **Mark processing**.
 2. Pack against the slip. On each order, **Copy** the address into the courier's booking page, enter the carrier and AWB, **Save & mark shipped**: the customer gets the tracking email.
-3. **Needs attention** means "look at this order": a payment that arrived after expiry or with a wrong amount, a second payment for an already-paid order, money received for a cancelled order, a stock conflict when a late payment could not be re-reserved, or a refund that failed or needs checking.
+3. **Needs attention** means "look at this order": a payment that arrived after expiry or with a wrong amount, a second payment for an already-paid (or refunded) order, money received for a cancelled order, a paid order you cancelled whose refund is still pending, a stock conflict when a late payment could not be re-reserved, or a refund that failed or needs checking.
 4. Carrier tracking links are templates in `src/lib/carriers.ts`; check each carrier once with a real AWB before launch.
+5. **Cancel** never moves money. Cancelling a paid order puts its stock back and flags it "refund pending" until you click **Refund** (or **Already refunded?** if you refunded in the Razorpay dashboard).
+6. **Invoices** freeze the seller name, address, state, GSTIN and GST rates at the moment the order is paid, so later changes in **Settings** never alter an invoice that was already issued. Orders paid before this existed use the current settings. A refunded order's invoice is marked **REFUNDED** with the refund date.
+
+**GST slab (confirm with your CA before launch):** the 5% / 18% slab is chosen from each item's list price before any discount. Under GST the slab may instead follow the discounted per-piece value shown on the invoice (for example a ₹2,700 tee sold at ₹2,430 after 10% off would fall in the lower slab). If your CA confirms that, the change is one line in `src/lib/gst.ts` (`buildInvoice`: rate from `(lineTotal − allocated discount) / quantity`).
 
 ## Environment variables
+
+In production (`NODE_ENV=production`, i.e. `npm run start`) the server **refuses to start** unless: `PAYMENT_PROVIDER=razorpay` with all three `RAZORPAY_*` values, `CRON_SECRET` of at least 32 characters, `EMAIL_DRIVER` of `smtp` (with `SMTP_URL`, `EMAIL_FROM`) or `ses` (with `AWS_REGION`, `EMAIL_FROM`), `NEXT_PUBLIC_SITE_URL` an `https://` address that is not localhost, and `AUTH_SECRET`. The log lists every missing item. `next build` and `npm run dev` are not checked (`src/instrumentation.ts`, `src/server/env-check.ts`).
 
 | Name | Needed | Purpose |
 |---|---|---|
 | `DATABASE_URL` | always | PostgreSQL (`connection_limit` ≥ 5 if set) |
 | `AUTH_SECRET`, `AUTH_TRUST_HOST` | always | Auth.js |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | optional | Google sign-in |
-| `NEXT_PUBLIC_SITE_URL` | always | absolute links in emails and metadata |
+| `NEXT_PUBLIC_SITE_URL` | always (production: `https://`, not localhost) | absolute links in emails and metadata |
 | `STORAGE_DRIVER` (+ `AWS_REGION`, `S3_BUCKET`, `S3_PUBLIC_BASE_URL` for `s3`) | always | image storage |
-| `EMAIL_DRIVER`, `EMAIL_FROM` (+ `SMTP_URL` for `smtp`, `AWS_REGION` for `ses`) | always | email |
+| `EMAIL_DRIVER`, `EMAIL_FROM` (+ `SMTP_URL` for `smtp`, `AWS_REGION` for `ses`) | always (production: `smtp` or `ses`) | email |
 | `PAYMENT_PROVIDER` | always in production (`razorpay`) | `mock` or `razorpay` |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | with `razorpay` | Razorpay API and webhook |
-| `CRON_SECRET` | production | protects `/api/cron/*` |
+| `CRON_SECRET` | production (≥ 32 characters) | protects `/api/cron/*` |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | seeding, e2e | seeded admin |
 
 ## Scripts

@@ -122,3 +122,12 @@ export function discountLabel(r: PriceResult): string | null {
   if (r.applied === "coupon" && r.coupon) return `Code ${r.coupon.code}`;
   return null;
 }
+
+/**
+ * Pay-time guard (M7): the order total the server charges can differ from the total the checkout
+ * showed (an offer started or ended, shipping settings changed). Then the shopper must see the new
+ * total and tap Pay again; `acknowledgedPaise` is the server total they were already shown.
+ */
+export function payTotalChanged(serverPaise: number, shownPaise: number, acknowledgedPaise: number | null): boolean {
+  return serverPaise !== shownPaise && serverPaise !== acknowledgedPaise;
+}

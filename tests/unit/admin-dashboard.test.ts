@@ -33,7 +33,7 @@ describe("admin dashboard", () => {
     expect(s.revenue).toEqual({ todayPaise: 100000, last7Paise: 150000, last30Paise: 170000 });
     expect(s).toMatchObject({ paidToday: 1, toShip: 1, needsAttention: 1, lowStockThreshold: 5 });
     expect(s.recentOrders).toHaveLength(6);
-    expect(s.topProducts).toEqual([{ productName: "Alpha", units: 2, revenuePaise: 100000 }]);
+    expect(s.topProducts).toEqual([{ productName: "Alpha", units: 2, grossSalesPaise: 100000 }]);
     expect(s.revenueByDay).toHaveLength(14);
     expect(s.revenueByDay[13]).toEqual({ date: "2026-10-10", revenuePaise: 100000, orders: 1 });
     expect(s.revenueByDay[10]).toEqual({ date: "2026-10-07", revenuePaise: 50000, orders: 1 });

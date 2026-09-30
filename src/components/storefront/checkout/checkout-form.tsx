@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { addressLines, formatPhone } from "@/lib/address-format";
 import { MAX_ADDRESSES } from "@/lib/address-limits";
 import { formatPaise } from "@/lib/money";
-import { discountLabel, type PriceResult } from "@/lib/pricing";
+import { discountLabel, payTotalChanged, type PriceResult } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
 import type { ProviderName } from "@/server/payments";
 import type { AddressView } from "@/server/services/addresses";
@@ -54,6 +54,9 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
   const [couponError, setCouponError] = useState<string | null>(null);
   const [price, setPrice] = useState<PriceResult>(view.price);
   const [note, setNote] = useState("");
+  // The server total the shopper was last told about after it differed from the summary (M7).
+  const [acknowledgedTotal, setAcknowledgedTotal] = useState<number | null>(null);
+  const [totalNotice, setTotalNotice] = useState<string | null>(null);
   const [showAllLines, setShowAllLines] = useState(false);
   const [couponPending, startCoupon] = useTransition();
   const [paying, startPay] = useTransition();
@@ -72,6 +75,12 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
   const itemCount = view.lines.reduce((s, l) => s + l.quantity, 0);
   const shippingGap = view.freeShippingThresholdPaise - (price.subtotalPaise - price.discountPaise);
 
+  // A new quote from a coupon change replaces whatever total was acknowledged before.
+  function resetTotalNotice() {
+    setAcknowledgedTotal(null);
+    setTotalNotice(null);
+  }
+
   function applyCoupon(e?: React.FormEvent) {
     e?.preventDefault();
     const code = couponInput.trim();
@@ -86,6 +95,7 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
         return;
       }
       setPrice(r.data);
+      resetTotalNotice();
       if (r.data.couponError) {
         setCouponError(r.data.couponError);
         setAppliedCode(null);
@@ -104,6 +114,7 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
         return;
       }
       setPrice(r.data);
+      resetTotalNotice();
       focusCouponInput.current = true;
       setAppliedCode(null);
       setCouponError(null);
@@ -132,6 +143,7 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
         const fresh = await quoteCheckoutAction(code);
         if (fresh.ok) {
           setPrice(fresh.data);
+          resetTotalNotice();
           if (code && fresh.data.couponError) {
             setAppliedCode(null);
             setCouponError(fresh.data.couponError);
@@ -141,6 +153,19 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
         router.refresh();
         return;
       }
+      if (payTotalChanged(r.data.amountPaise, price.totalPaise, acknowledgedTotal)) {
+        // The total changed since this page was priced: never open a payment window for an amount
+        // the Pay button didn't show. Refresh the summary and require a second tap (M7); that tap
+        // reuses this same open order.
+        const message = `Total updated to ${formatPaise(r.data.amountPaise)}. Check the summary and tap Pay again.`;
+        setAcknowledgedTotal(r.data.amountPaise);
+        setTotalNotice(message);
+        toast.message(message);
+        const fresh = await quoteCheckoutAction(appliedCode);
+        if (fresh.ok) setPrice(fresh.data);
+        return;
+      }
+      setTotalNotice(null);
       try {
         await startPayment(r.data, router);
       } catch (e) {
@@ -331,6 +356,9 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
         {price.shippingPaise > 0 && shippingGap > 0 && (
           <p className="text-sm text-text-muted" data-testid="free-shipping-hint">Add {formatPaise(shippingGap)} more for free delivery</p>
         )}
+        <p role="status" aria-live="polite" data-testid="total-updated" className={cn("text-sm", totalNotice && "rounded-md bg-amber-500/10 p-3 text-amber-200")}>
+          {totalNotice}
+        </p>
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-bg/95 px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-3 backdrop-blur lg:static lg:z-auto lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none" data-testid="pay-bar" data-sticky-bar>
           <div className="flex items-center gap-4">
             <div className="flex shrink-0 flex-col leading-tight lg:hidden">

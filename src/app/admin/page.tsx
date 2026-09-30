@@ -38,6 +38,7 @@ export default async function AdminDashboard() {
         </section>
         <section className={CARD} aria-labelledby="top-heading">
           <h2 id="top-heading" className="mb-3 text-2xl">Top products (30 days)</h2>
+          <p className="-mt-2 mb-3 text-xs text-text-muted">Gross sales, before discounts and shipping.</p>
           {s.topProducts.length === 0 ? (
             <p className="text-sm text-text-muted" data-testid="top-products-empty">No paid orders in the last 30 days.</p>
           ) : (
@@ -49,7 +50,7 @@ export default async function AdminDashboard() {
                     <span className="block truncate">{p.productName}</span>
                     <span className="text-xs text-text-muted">{p.units} sold</span>
                   </span>
-                  <span className="font-medium tabular-nums">{formatPaise(p.revenuePaise)}</span>
+                  <span className="font-medium tabular-nums" title="Gross sales before discounts">{formatPaise(p.grossSalesPaise)}</span>
                 </li>
               ))}
             </ol>

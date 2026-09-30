@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { OrderStatusPill } from "@/components/storefront/account/order-status-pill";
 import { OrderStepper } from "@/components/storefront/account/order-stepper";
+import { AutoRefresh } from "@/components/storefront/checkout/auto-refresh";
 import { RetryPaymentButton } from "@/components/storefront/checkout/retry-payment-button";
 import { PriceBreakup } from "@/components/storefront/price-breakup";
 import { Button } from "@/components/ui/button";
@@ -11,12 +12,12 @@ import { BRAND } from "@/config/brand";
 import { addressLines, formatPhone } from "@/lib/address-format";
 import { formatDateTimeIst, formatTimeIst } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
-import { isPaidStatus } from "@/lib/order-status";
+import { isPaidStatus, pendingPaymentMode } from "@/lib/order-status";
 import { isHttpUrl } from "@/lib/url";
 import { auth } from "@/server/auth";
 import { NotFoundError } from "@/server/errors";
 import { orderDiscountLabel } from "@/server/services/order-records";
-import { getOrderForUser } from "@/server/services/orders";
+import { getOrderForUser, hasFailedPaymentAttempt } from "@/server/services/orders";
 
 export const metadata: Metadata = { title: "Order" };
 export const dynamic = "force-dynamic";
@@ -37,7 +38,8 @@ export default async function AccountOrderDetailPage({ params, searchParams }: {
     throw err;
   });
 
-  const canRetry = order.status === "PENDING_PAYMENT" && order.expiresAt > new Date();
+  const unpaid = order.status === "PENDING_PAYMENT" && order.expiresAt > new Date();
+  const mode = unpaid ? pendingPaymentMode(sp.payment, await hasFailedPaymentAttempt(order.id)) : null;
   const canDownloadInvoice = isPaidStatus(order.status) || order.status === "REFUNDED";
 
   return (
@@ -54,11 +56,26 @@ export default async function AccountOrderDetailPage({ params, searchParams }: {
 
       <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
         <div className="space-y-8">
-          {canRetry && (
+          {mode === "retry" && (
             <div role="status" className="space-y-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
               {paymentFailed(sp.payment) && <p>The last attempt failed. No money was taken.</p>}
               <p>Payment not completed. Your items are held until {formatTimeIst(order.expiresAt)}.</p>
               <RetryPaymentButton number={order.number} />
+            </div>
+          )}
+          {mode === "confirming" && (
+            <div className="space-y-2 rounded-md border border-border bg-surface p-4 text-sm" data-testid="payment-confirming">
+              <p className="font-medium">Confirming your payment…</p>
+              <AutoRefresh
+                fallback={
+                  <p className="text-text-muted">
+                    Still waiting? If money left your account it will be confirmed automatically. Didn&apos;t pay? Your items are held until {formatTimeIst(order.expiresAt)}; check out again from your bag.
+                    Payment taken but not confirmed? Contact {BRAND.supportEmail} with your order number.
+                  </p>
+                }
+              >
+                <p className="text-text-muted" role="status">This takes a few seconds. We will email you when it is confirmed.</p>
+              </AutoRefresh>
             </div>
           )}
 

@@ -11,7 +11,8 @@ export interface DashboardStats {
   revenue: { todayPaise: number; last7Paise: number; last30Paise: number };
   paidToday: number; toShip: number; needsAttention: number;
   recentOrders: { id: string; number: string; createdAt: Date; customerName: string; totalPaise: number; status: OrderStatus }[];
-  topProducts: { productName: string; units: number; revenuePaise: number }[];
+  /** `grossSalesPaise`: line totals before discounts and without shipping, so it does not add up to the revenue tiles (M8). */
+  topProducts: { productName: string; units: number; grossSalesPaise: number }[];
   /** 14 IST days, oldest first; the last entry is today. */
   revenueByDay: { date: string; revenuePaise: number; orders: number }[];
 }
@@ -64,7 +65,7 @@ export async function getDashboardStats(now: Date = new Date()): Promise<Dashboa
     revenue: { todayPaise: rToday._sum.totalPaise ?? 0, last7Paise: r7._sum.totalPaise ?? 0, last30Paise: r30._sum.totalPaise ?? 0 },
     paidToday, toShip, needsAttention,
     recentOrders: recent.map((o) => ({ id: o.id, number: o.number, createdAt: o.createdAt, customerName: o.shipName, totalPaise: o.totalPaise, status: o.status })),
-    topProducts: top.map((t) => ({ productName: t.productName, units: t._sum.quantity ?? 0, revenuePaise: t._sum.lineTotalPaise ?? 0 })),
+    topProducts: top.map((t) => ({ productName: t.productName, units: t._sum.quantity ?? 0, grossSalesPaise: t._sum.lineTotalPaise ?? 0 })),
     revenueByDay: [...buckets.entries()].map(([date, b]) => ({ date, ...b })),
   };
 }

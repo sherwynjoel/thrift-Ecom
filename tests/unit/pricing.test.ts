@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COUPON_UNAVAILABLE, discountLabel, priceCart, type PricingContext, type PricingCoupon, type PricingOffer } from "@/lib/pricing";
+import { COUPON_UNAVAILABLE, discountLabel, payTotalChanged, priceCart, type PricingContext, type PricingCoupon, type PricingOffer } from "@/lib/pricing";
 
 const settings = { shippingFeePaise: 7900, freeShippingThresholdPaise: 99900 };
 const now = new Date("2026-10-01T10:00:00Z");
@@ -136,5 +136,16 @@ describe("offer versus coupon", () => {
     const r = priceCart([line(59900, 2)], ctx({ offers: [offer({ minQty: 2 })], coupon: coupon({ value: 19900 }) }));
     expect(r.applied).toBe("offer");
     expect(discountLabel(priceCart([line(59900)], ctx()))).toBeNull();
+  });
+});
+
+describe("payTotalChanged (M7)", () => {
+  it("requires a second tap only when the server total differs from what the shopper saw", () => {
+    expect(payTotalChanged(59900, 59900, null)).toBe(false);
+    expect(payTotalChanged(67800, 59900, null)).toBe(true);
+    // Already told about 67800 (the summary may not have refreshed): the second tap goes through.
+    expect(payTotalChanged(67800, 59900, 67800)).toBe(false);
+    // It changed yet again: tell them again.
+    expect(payTotalChanged(70000, 59900, 67800)).toBe(true);
   });
 });
