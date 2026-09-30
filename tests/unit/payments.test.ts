@@ -66,6 +66,15 @@ describe("RazorpayProvider", () => {
     expect(f.mock.calls[0][0]).toBe("https://api.razorpay.com/v1/payments/pay_1/refund");
     expect(JSON.parse(f.mock.calls[0][1].body as string)).toEqual({ amount: 5000 });
   });
+
+  it("lists the refunds a payment already has", async () => {
+    const f = fakeFetch(200, { entity: "collection", count: 1, items: [{ id: "rfnd_9", amount: 5000, status: "processed" }] });
+    await expect(provider(f).fetchRefunds("pay_1")).resolves.toEqual([{ id: "rfnd_9", amountPaise: 5000, status: "processed" }]);
+    expect(f.mock.calls[0][0]).toBe("https://api.razorpay.com/v1/payments/pay_1/refunds");
+    expect(f.mock.calls[0][1].method).toBe("GET");
+    expect(f.mock.calls[0][1].body).toBeUndefined();
+    await expect(provider(fakeFetch(500, {})).fetchRefunds("pay_1")).rejects.toBeInstanceOf(PaymentError);
+  });
 });
 
 describe("MockProvider", () => {
@@ -80,6 +89,7 @@ describe("MockProvider", () => {
     expect(m.verifyPaymentSignature({ providerOrderId: o.id, paymentId: pay, signature: m.sign(o.id, "x") })).toBe(false);
     expect(m.verifyWebhookSignature(WEBHOOK_BODY, hmacSha256Hex(MOCK_SECRET, WEBHOOK_BODY))).toBe(true);
     expect((await m.refund(pay, 100)).id).toMatch(/^mock_refund_/);
+    await expect(m.fetchRefunds(pay)).resolves.toEqual([]);
     expect(m.publicKey).toBeNull();
   });
 });

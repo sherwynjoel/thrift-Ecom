@@ -131,6 +131,7 @@
 @media print {
   html, body { background: #fff !important; color: #000 !important; }
   .print-page { break-after: page; }
-  .print-page:last-child { break-after: auto; }
+  /* Each document sits in its own wrapper, so :last-child would match every one: the final document carries an explicit class instead. */
+  .print-page-last { break-after: auto; }
   .no-print { display: none !important; }
 }

@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { parseOrderTab, type OrderTab } from "@/lib/order-tabs";
 import { cn } from "@/lib/utils";
-import { listAdminOrders } from "@/server/services/admin-orders";
+import { listAdminOrders, MAX_LIST_PAGE } from "@/server/services/admin-orders";
 import { requireAdminPage } from "../guard";
 
 export const metadata = { title: "Orders" };
@@ -39,7 +39,7 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
   const q = first(sp.q)?.trim().slice(0, 100) || undefined;
   const tab = parseOrderTab(first(sp.tab));
   const attention = first(sp.attention) === "1";
-  const page = Math.max(1, Math.floor(Number(first(sp.page))) || 1);
+  const page = Math.min(Math.max(1, Math.floor(Number(first(sp.page))) || 1), MAX_LIST_PAGE);
   const list = await listAdminOrders({ tab, q, attention, page });
 
   // What the header export and the bulk bar's "Export all matching" use: the current search (or tab) and attention filter, no page.

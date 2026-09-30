@@ -2,7 +2,7 @@ import type { OrderStatus, Prisma } from "@prisma/client";
 import { db } from "@/server/db";
 import { zodFieldErrors } from "@/server/action-result";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
-import { getPaymentProvider, paymentProviderName } from "@/server/payments";
+import { getPaymentProvider, paymentProviderName, type ProviderName } from "@/server/payments";
 import { notifyOrder } from "@/server/services/notifications";
 import { addOrderEvent, orderWithItems, toOrderView, type OrderView } from "@/server/services/order-records";
 import { cancelOrder, restockOrderItems } from "@/server/services/orders";
@@ -13,11 +13,12 @@ import { formatDateTimeIst } from "@/lib/dates";
 import { paiseToRupees } from "@/lib/money";
 import { fulfilmentRank, isPaidStatus, ORDER_STATUS_LABEL, PAID_STATUSES, TO_SHIP_STATUSES, type FulfilmentStatus } from "@/lib/order-status";
 import { ORDER_TABS, type OrderTab } from "@/lib/order-tabs";
-import { adminNoteSchema, cancelReasonSchema, trackingInputSchema } from "@/lib/validation/orders";
+import { adminNoteSchema, cancelReasonSchema, fulfilmentStatusSchema, manualRefundNoteSchema, trackingInputSchema } from "@/lib/validation/orders";
 
 const DAY = 86_400_000;
 export const BULK_LIMIT = 200;
 const EXPORT_LIMIT = 5000;
+export const MAX_LIST_PAGE = 1000;
 
 export interface AdminOrderFilter { tab?: OrderTab; q?: string; attention?: boolean; page?: number; pageSize?: number }
 export interface AdminOrderRow {
@@ -31,6 +32,8 @@ export interface AdminOrderDetail extends OrderView {
   needsAttention: boolean; adminNote: string | null;
   customer: { id: string; name: string | null; email: string; paidOrderCount: number };
   events: AdminOrderEvent[];
+  /** The provider refundOrder would call for this order right now (paid through the configured provider), or null = recorded as manual. */
+  refundVia: ProviderName | null;
 }
 
 const isToShip = (s: OrderStatus) => (TO_SHIP_STATUSES as readonly OrderStatus[]).includes(s);
@@ -57,7 +60,7 @@ export function adminOrderWhere(f: AdminOrderFilter): Prisma.OrderWhereInput {
 
 export async function listAdminOrders(f: AdminOrderFilter = {}, now: Date = new Date()): Promise<AdminOrderList> {
   const pageSize = Math.min(Math.max(f.pageSize ?? 50, 1), 200);
-  const page = Math.max(f.page ?? 1, 1);
+  const page = Math.min(Math.max(Math.floor(f.page ?? 1) || 1, 1), MAX_LIST_PAGE);
   const activeTab: OrderTab = f.q?.trim() ? "all" : f.tab ?? "to-ship";
   const where = adminOrderWhere(f);
   // "To ship" is a packing queue: oldest paid first (FIFO). Everything else reads newest first.
@@ -100,6 +103,7 @@ export async function getAdminOrder(id: string): Promise<AdminOrderDetail> {
     needsAttention: o.needsAttention,
     adminNote: o.adminNote,
     customer: { id: o.user.id, name: o.user.name, email: o.user.email, paidOrderCount },
+    refundVia: refundProviderFor(o),
     events: o.events.map((e) => ({ id: e.id, type: e.type, message: e.message, createdAt: e.createdAt, actorName: e.actorId ? names.get(e.actorId) ?? null : null })),
   };
 }
@@ -109,12 +113,16 @@ export async function getAdminOrder(id: string): Promise<AdminOrderDetail> {
  * skipped timestamps). The status-guarded updateMany makes a concurrent change (a second click, a
  * cancel) lose cleanly with a ConflictError. No stock is touched here.
  */
-export async function advanceOrderStatus(id: string, to: FulfilmentStatus, actorId: string | null, opts: { notify?: boolean } = {}): Promise<void> {
+export async function advanceOrderStatus(id: string, toInput: FulfilmentStatus, actorId: string | null, opts: { notify?: boolean } = {}): Promise<void> {
+  const parsedTo = fulfilmentStatusSchema.safeParse(toInput);
+  if (!parsedTo.success) throw new ValidationError({ to: parsedTo.error.issues.map((i) => i.message) });
+  const to: FulfilmentStatus = parsedTo.data;
   const o = await db.order.findUnique({ where: { id }, select: { status: true, processingAt: true, shippedAt: true } });
   if (!o) throw new NotFoundError("Order");
   const from = fulfilmentRank(o.status);
   const target = fulfilmentRank(to);
-  if (from < 0 || target <= from) {
+  // Delivered only from Shipped: the customer must get the shipped email (with tracking) first.
+  if (from < 0 || target <= from || (to === "DELIVERED" && o.status !== "SHIPPED")) {
     throw new ConflictError(`A ${ORDER_STATUS_LABEL[o.status].toLowerCase()} order cannot be marked ${ORDER_STATUS_LABEL[to].toLowerCase()}`);
   }
   const now = new Date();
@@ -201,55 +209,140 @@ function canRefund(o: { status: OrderStatus; providerPaymentId: string | null })
   return isPaidStatus(o.status) || (o.status === "CANCELLED" && Boolean(o.providerPaymentId));
 }
 
+function configuredProvider(): ProviderName | null {
+  try {
+    return paymentProviderName();
+  } catch {
+    return null;
+  }
+}
+
+function refundProviderFor(o: { providerPaymentId: string | null; paymentProvider: string }): ProviderName | null {
+  const current = configuredProvider();
+  return o.providerPaymentId && current && o.paymentProvider === current ? current : null;
+}
+
+/** Transaction options for refundOrder: up to two provider calls (fetchRefunds + refund, 15 s fetch timeout each) run inside the row lock. Mutable for tests only. */
+export const refundTxOptions = { maxWait: 10_000, timeout: 40_000 };
+
 type RefundRow = { status: OrderStatus; providerPaymentId: string | null; paymentProvider: string; totalPaise: number; stockReserved: boolean };
+
+class ProviderRefundFailed extends Error {
+  constructor(readonly original: unknown) {
+    super(original instanceof Error ? original.message : String(original));
+  }
+}
+
+/** Flags the order and writes the ATTENTION event only when the flag flips false → true (same semantics as orders.ts flagAttentionOnce). */
+async function flagAttentionOnce(id: string, message: string, actorId: string | null): Promise<void> {
+  try {
+    await db.$transaction(async (tx) => {
+      const u = await tx.order.updateMany({ where: { id, needsAttention: false }, data: { needsAttention: true } });
+      if (u.count === 1) await addOrderEvent(tx, id, "ATTENTION", message, actorId);
+    });
+  } catch (err) {
+    console.error("[admin-orders] could not flag attention", id, err);
+  }
+}
+
+const providerLabel = (p: string) => (p === "razorpay" ? "Razorpay" : p === "mock" ? "the mock provider" : p);
 
 /**
  * Refunds a paid order (or the payment on a cancelled one). The order row is locked FOR UPDATE for
- * the whole operation, including the provider call, so two clicks (or two admins) can never create
- * two refunds: the second waits, then sees REFUNDED and gets a ConflictError. If the provider call
- * fails nothing is written. Stock goes back only for unshipped orders, via restockOrderItems (after
- * the order row lock, variants sorted by id, exactly-once through Order.stockReserved).
+ * the whole operation, including the provider calls, so two clicks (or two admins) can never create
+ * two refunds: the second waits, then sees REFUNDED and gets a ConflictError.
+ *
+ * Idempotent across provider timeouts: before creating a refund it asks the provider for refunds
+ * that already exist for the payment; if those (pending or processed) cover the order total, the
+ * order is finalised with that refund id and no new refund is created. Any provider failure leaves
+ * the order untouched and flags it for attention (outside the rolled-back transaction). If a refund
+ * was created but the order update then fails, the order is flagged with the refund id.
+ *
+ * Stock goes back only for unshipped orders, via restockOrderItems (after the order row lock,
+ * variants sorted by id, exactly-once through Order.stockReserved).
  */
 export async function refundOrder(id: string, actorId: string | null): Promise<{ refundId: string | null }> {
-  const currentProvider = paymentProviderName();
+  const currentProvider = configuredProvider();
   let createdRefundId: string | null = null;
   try {
-    const refundId = await db.$transaction(
-      async (tx) => {
-        const rows = await tx.$queryRaw<RefundRow[]>`
-          SELECT status, "providerPaymentId", "paymentProvider", "totalPaise", "stockReserved" FROM "Order" WHERE id = ${id} FOR UPDATE`;
-        const o = rows[0];
-        if (!o) throw new NotFoundError("Order");
-        if (!canRefund(o)) {
-          throw new ConflictError(o.status === "REFUNDED" ? "This order is already refunded" : "Only paid orders can be refunded");
-        }
+    const refundId = await db.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<RefundRow[]>`
+        SELECT status, "providerPaymentId", "paymentProvider", "totalPaise", "stockReserved" FROM "Order" WHERE id = ${id} FOR UPDATE`;
+      const o = rows[0];
+      if (!o) throw new NotFoundError("Order");
+      if (!canRefund(o)) {
+        throw new ConflictError(o.status === "REFUNDED" ? "This order is already refunded" : "Only paid orders can be refunded");
+      }
 
-        let note = "Marked as refunded (refund made outside the store)";
-        if (o.providerPaymentId && o.paymentProvider === currentProvider) {
-          createdRefundId = (await getPaymentProvider().refund(o.providerPaymentId, o.totalPaise)).id;
-          note = `Refund ${createdRefundId} created with ${o.paymentProvider === "razorpay" ? "Razorpay" : "the mock provider"}`;
+      let finalId: string | null = null;
+      let note = "Marked as refunded (refund made outside the store)";
+      if (o.providerPaymentId && currentProvider && o.paymentProvider === currentProvider) {
+        const provider = getPaymentProvider();
+        try {
+          const existing = (await provider.fetchRefunds(o.providerPaymentId)).filter((r) => r.status !== "failed");
+          const covered = existing.reduce((sum, r) => sum + r.amountPaise, 0);
+          if (existing.length > 0 && covered >= o.totalPaise) {
+            finalId = existing[existing.length - 1].id;
+            note = `Refund ${finalId} already existed with ${providerLabel(o.paymentProvider)}; recorded it (no new refund created)`;
+          } else {
+            createdRefundId = (await provider.refund(o.providerPaymentId, o.totalPaise)).id;
+            finalId = createdRefundId;
+            note = `Refund ${finalId} created with ${providerLabel(o.paymentProvider)}`;
+          }
+        } catch (err) {
+          throw new ProviderRefundFailed(err);
         }
+      }
 
-        const restock = isToShip(o.status) && o.stockReserved;
-        await tx.order.update({ where: { id }, data: { status: "REFUNDED", refundedAt: new Date(), needsAttention: false } });
-        if (isToShip(o.status)) await restockOrderItems(tx, id);
-        await addOrderEvent(tx, id, "REFUNDED", `${note}${restock ? "; stock restocked" : ""}`, actorId);
-        return createdRefundId;
-      },
-      // The provider call runs inside the lock; Razorpay's own fetch timeout is 15 s.
-      { maxWait: 10_000, timeout: 30_000 },
-    );
+      const restock = isToShip(o.status) && o.stockReserved;
+      await tx.order.update({ where: { id }, data: { status: "REFUNDED", refundedAt: new Date(), needsAttention: false } });
+      if (isToShip(o.status)) await restockOrderItems(tx, id);
+      await addOrderEvent(tx, id, "REFUNDED", `${note}${restock ? "; stock restocked" : ""}`, actorId);
+      return finalId;
+    }, refundTxOptions);
     await notifyOrder(id, "refunded");
     return { refundId };
   } catch (err) {
     if (createdRefundId) {
       // Money moved but the order could not be updated: make sure the owner sees it.
       await db.order.updateMany({ where: { id }, data: { needsAttention: true } }).catch(() => undefined);
-      await addOrderEvent(db, id, "ATTENTION", `Refund ${createdRefundId} was created but the order could not be updated. Check it before refunding again.`, actorId).catch(() => undefined);
-      throw new ConflictError(`Refund ${createdRefundId} was created but the order could not be updated. Reload and check before refunding again.`);
+      await addOrderEvent(db, id, "ATTENTION", `Refund ${createdRefundId} was created but the order could not be updated. Refund again to record it (no second refund is made).`, actorId).catch(() => undefined);
+      throw new ConflictError(`Refund ${createdRefundId} was created but the order could not be updated. Reload and refund again to record it.`);
+    }
+    if (err instanceof ProviderRefundFailed) {
+      await flagAttentionOnce(
+        id,
+        `Refund attempt failed or timed out (${err.message.slice(0, 200)}). Check the payment dashboard before retrying; if it was refunded there, use "Mark refunded".`,
+        actorId,
+      );
+      throw new ConflictError(`The refund did not go through or timed out (${err.message.slice(0, 120)}). Check the payment dashboard before retrying; the order is flagged.`);
     }
     throw err;
   }
+}
+
+/**
+ * Records a refund that was made directly in the payment dashboard (e.g. after a timed-out refund
+ * attempt), without calling the provider. A note is required. Restocks only unshipped orders, via
+ * restockOrderItems after the order row lock.
+ */
+export async function markRefundedManually(id: string, note: unknown, actorId: string | null): Promise<void> {
+  const parsed = manualRefundNoteSchema.safeParse(note);
+  if (!parsed.success) throw new ValidationError({ note: parsed.error.issues.map((i) => i.message) });
+  await db.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<{ status: OrderStatus; stockReserved: boolean }[]>`
+      SELECT status, "stockReserved" FROM "Order" WHERE id = ${id} FOR UPDATE`;
+    const o = rows[0];
+    if (!o) throw new NotFoundError("Order");
+    if (!isPaidStatus(o.status)) {
+      throw new ConflictError(o.status === "REFUNDED" ? "This order is already refunded" : "Only paid orders can be marked refunded");
+    }
+    const restock = isToShip(o.status) && o.stockReserved;
+    await tx.order.update({ where: { id }, data: { status: "REFUNDED", refundedAt: new Date(), needsAttention: false } });
+    if (isToShip(o.status)) await restockOrderItems(tx, id);
+    await addOrderEvent(tx, id, "REFUNDED", `Marked as refunded manually: ${parsed.data}${restock ? "; stock restocked" : ""}`, actorId);
+  });
+  await notifyOrder(id, "refunded");
 }
 
 const CSV_HEADER = [

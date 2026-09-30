@@ -66,7 +66,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
 
       <div className="flex flex-wrap items-center gap-2">
         <OrderActions
-          order={{ id: order.id, number: order.number, status: order.status, totalPaise: order.totalPaise, providerPaymentId: order.providerPaymentId, paymentProvider: order.paymentProvider }}
+          order={{ id: order.id, number: order.number, status: order.status, totalPaise: order.totalPaise, providerPaymentId: order.providerPaymentId, paymentProvider: order.paymentProvider, refundVia: order.refundVia }}
         />
         <div className="flex flex-wrap items-center gap-2" data-testid="print-actions">
           <Button variant="secondary" className="h-11" render={<a href={`/admin/orders/print?doc=label&ids=${order.id}`} target="_blank" rel="noopener" />} nativeButton={false} data-testid="print-label">

@@ -5,10 +5,11 @@ import { formatDateIst } from "@/lib/dates";
 import type { OrderView } from "@/server/services/order-records";
 import type { StoreSettings } from "@/server/services/settings";
 
-export function SlipDocument({ order, settings }: { order: OrderView; settings: StoreSettings }) {
+/** `last` marks the final document in a print run: every other one forces a page break after itself. */
+export function SlipDocument({ order, settings, last = false }: { order: OrderView; settings: StoreSettings; last?: boolean }) {
   const brand = settings.sellerName || BRAND.name;
   return (
-    <article data-testid="packing-slip" className="print-page mx-auto w-full max-w-[210mm] bg-white p-6 text-[12px] text-black sm:p-10">
+    <article data-testid="packing-slip" className={`print-page${last ? " print-page-last" : ""} mx-auto w-full max-w-[210mm] bg-white p-6 text-[12px] text-black sm:p-10`}>
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-black/20 pb-4">
         <div>
           <p className="text-xl font-bold uppercase">{brand}</p>

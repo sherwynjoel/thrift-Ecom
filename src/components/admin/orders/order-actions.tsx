@@ -4,7 +4,7 @@ import type { OrderStatus } from "@prisma/client";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { advanceStatusAction, cancelOrderAction, clearAttentionAction, refundOrderAction } from "@/app/admin/orders/actions";
+import { advanceStatusAction, cancelOrderAction, clearAttentionAction, markRefundedAction, refundOrderAction } from "@/app/admin/orders/actions";
 import { FieldError } from "@/components/admin/field-error";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
@@ -17,7 +17,7 @@ const GENERIC_ERROR = "Something went wrong. Please try again.";
 const NEXT_LABEL: Record<FulfilmentStatus, string> = { PROCESSING: "Mark processing", SHIPPED: "Mark shipped", DELIVERED: "Mark delivered" };
 const DONE_TOAST: Record<FulfilmentStatus, string> = { PROCESSING: "Marked processing", SHIPPED: "Marked shipped; customer emailed", DELIVERED: "Marked delivered; customer emailed" };
 
-type Props = { order: Pick<AdminOrderDetail, "id" | "number" | "status" | "totalPaise" | "providerPaymentId" | "paymentProvider"> };
+type Props = { order: Pick<AdminOrderDetail, "id" | "number" | "status" | "totalPaise" | "providerPaymentId" | "paymentProvider" | "refundVia"> };
 
 function canRefund(status: OrderStatus, paymentId: string | null): boolean {
   return isPaidStatus(status) || (status === "CANCELLED" && Boolean(paymentId));
@@ -40,8 +40,13 @@ export function OrderActions({ order }: Props) {
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState<string[] | undefined>();
   const next = nextFulfilmentStatus(order.status);
-  const viaRazorpay = order.paymentProvider === "razorpay" && Boolean(order.providerPaymentId);
-  const viaMock = order.paymentProvider === "mock" && Boolean(order.providerPaymentId);
+  // What the server will actually do: refundVia is the configured provider when this order was paid through it, else null (manual).
+  const viaRazorpay = order.refundVia === "razorpay";
+  const viaMock = order.refundVia === "mock";
+  const dashboard = viaRazorpay ? "Razorpay" : "the payment dashboard";
+  const [markOpen, setMarkOpen] = useState(false);
+  const [markNote, setMarkNote] = useState("");
+  const [markError, setMarkError] = useState<string[] | undefined>();
 
   const advance = (to: FulfilmentStatus) =>
     start(async () => {
@@ -102,7 +107,27 @@ export function OrderActions({ order }: Props) {
       }
     });
 
+  const markRefunded = () =>
+    start(async () => {
+      try {
+        const r = await markRefundedAction(order.id, markNote);
+        if (!r.ok) {
+          setMarkError(r.fieldErrors?.note);
+          toast.error(r.message);
+          if (!r.fieldErrors?.note) setMarkOpen(false);
+          return;
+        }
+        toast.success("Marked as refunded");
+        setMarkOpen(false);
+        router.refresh();
+      } catch {
+        toast.error(GENERIC_ERROR);
+      }
+    });
+
   const showCancel = canCancel(order.status);
+  // Only needed when Refund would call the provider: otherwise Refund already records a manual refund.
+  const showMarkRefunded = isPaidStatus(order.status) && order.refundVia !== null;
   const showRefund = canRefund(order.status, order.providerPaymentId);
   if (!next && !showCancel && !showRefund) return null;
 
@@ -128,6 +153,11 @@ export function OrderActions({ order }: Props) {
       {showRefund && (
         <Button type="button" variant="destructive" className="h-11 px-4" onClick={() => setRefundOpen(true)} disabled={pending} data-testid="refund-order">
           Refund
+        </Button>
+      )}
+      {showMarkRefunded && (
+        <Button type="button" variant="ghost" className="h-11 px-3 text-text-muted" onClick={() => { setMarkError(undefined); setMarkOpen(true); }} disabled={pending} data-testid="mark-refunded">
+          Already refunded?
         </Button>
       )}
 
@@ -172,6 +202,36 @@ export function OrderActions({ order }: Props) {
             <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => setRefundOpen(false)}>Keep order</Button>
             <Button type="button" variant="destructive" className="h-11 px-4" onClick={refund} disabled={pending} data-testid="confirm-refund">
               {pending ? "Refunding…" : viaRazorpay || viaMock ? `Refund ${formatPaise(order.totalPaise)}` : "Mark as refunded"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={markOpen} onOpenChange={setMarkOpen}>
+        <DialogContent className="bg-bg">
+          <DialogTitle>Mark refunded (already refunded in {dashboard})</DialogTitle>
+          <DialogDescription>
+            Use this only when the money was already returned in {dashboard}, for example after a refund attempt here timed out. No new refund is made. The customer is emailed.
+            {canCancel(order.status) ? " Stock goes back on sale." : ""}
+          </DialogDescription>
+          <div>
+            <Label htmlFor="mark-refunded-note">Note (required, e.g. the refund id)</Label>
+            <textarea
+              id="mark-refunded-note"
+              rows={2}
+              maxLength={200}
+              required
+              value={markNote}
+              onChange={(e) => setMarkNote(e.target.value)}
+              aria-invalid={markError ? true : undefined}
+              className="mt-1 w-full rounded-md border border-border bg-bg p-3 text-base md:text-sm"
+            />
+            <FieldError errors={markError} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="secondary" className="h-11 px-4" onClick={() => setMarkOpen(false)}>Keep order</Button>
+            <Button type="button" variant="destructive" className="h-11 px-4" onClick={markRefunded} disabled={pending || markNote.trim().length < 3} data-testid="confirm-mark-refunded">
+              {pending ? "Saving…" : "Mark refunded"}
             </Button>
           </DialogFooter>
         </DialogContent>

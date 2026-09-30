@@ -15,3 +15,10 @@ export type TrackingInput = z.input<typeof trackingInputSchema>;
 
 export const adminNoteSchema = z.string().max(2000, "Keep notes under 2000 characters");
 export const cancelReasonSchema = z.string().trim().max(200, "Keep the reason under 200 characters");
+
+export const fulfilmentStatusSchema = z.enum(["PROCESSING", "SHIPPED", "DELIVERED"], { errorMap: () => ({ message: "Choose a valid status" }) });
+export const manualRefundNoteSchema = z
+  .string({ required_error: "Say where the refund was made" })
+  .trim()
+  .min(3, "Say where the refund was made (for example the Razorpay refund id)")
+  .max(200, "Keep the note under 200 characters");

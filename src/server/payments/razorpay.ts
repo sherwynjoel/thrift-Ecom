@@ -1,6 +1,6 @@
 import { PaymentError } from "@/server/errors";
 import { verifyHmac } from "./hmac";
-import type { PaymentProvider, ProviderOrder } from "./types";
+import type { PaymentProvider, ProviderOrder, ProviderRefund } from "./types";
 
 const API = "https://api.razorpay.com/v1";
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
@@ -18,16 +18,16 @@ export class RazorpayProvider implements PaymentProvider {
     this.publicKey = keyId;
   }
 
-  private async post<T>(path: string, body: unknown): Promise<T> {
+  private async request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
     let res: Response;
     try {
       res = await this.fetchImpl(`${API}${path}`, {
-        method: "POST",
+        method,
         headers: {
           authorization: `Basic ${Buffer.from(`${this.keyId}:${this.keySecret}`).toString("base64")}`,
-          "content-type": "application/json",
+          ...(body === undefined ? {} : { "content-type": "application/json" }),
         },
-        body: JSON.stringify(body),
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         signal: AbortSignal.timeout(15_000),
       });
     } catch (err) {
@@ -40,6 +40,10 @@ export class RazorpayProvider implements PaymentProvider {
       throw new PaymentError();
     }
     return (await res.json()) as T;
+  }
+
+  private post<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>("POST", path, body);
   }
 
   async createOrder(input: { amountPaise: number; receipt: string; notes?: Record<string, string> }): Promise<ProviderOrder> {
@@ -60,5 +64,10 @@ export class RazorpayProvider implements PaymentProvider {
   async refund(paymentId: string, amountPaise: number): Promise<{ id: string }> {
     const r = await this.post<{ id: string }>(`/payments/${encodeURIComponent(paymentId)}/refund`, { amount: amountPaise });
     return { id: r.id };
+  }
+
+  async fetchRefunds(paymentId: string): Promise<ProviderRefund[]> {
+    const r = await this.request<{ items?: { id: string; amount: number; status: string }[] }>("GET", `/payments/${encodeURIComponent(paymentId)}/refunds`);
+    return (r.items ?? []).map((x) => ({ id: x.id, amountPaise: x.amount, status: x.status }));
   }
 }

@@ -147,7 +147,7 @@ export function OrdersTable({ rows, exportQuery }: { rows: AdminOrderRow[]; expo
             <Button type="button" variant="ghost" className="h-11 px-4 md:order-last" onClick={clear}>
               Clear
             </Button>
-            <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto">
+            <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto md:flex-wrap">
               {/* Print buttons come first: printing labels/slips is the most-used bulk action while packing. */}
               <Button
                 variant="secondary"

@@ -8,7 +8,7 @@ import { markOrderPaid, placeOrder } from "@/server/services/orders";
 import { getEmail, type ConsoleEmail } from "@/server/adapters/email";
 import { getPaymentProvider } from "@/server/payments";
 import {
-  adminCancelOrder, advanceOrderStatus, bulkMarkProcessing, clearAttention, countToShip, exportOrdersCsv, getAdminOrder, getOrdersForPrint, listAdminOrders, refundOrder, saveTracking, setAdminNote,
+  adminCancelOrder, advanceOrderStatus, bulkMarkProcessing, clearAttention, countToShip, exportOrdersCsv, getAdminOrder, getOrdersForPrint, listAdminOrders, markRefundedManually, refundOrder, refundTxOptions, saveTracking, setAdminNote,
 } from "@/server/services/admin-orders";
 import { ConflictError, ValidationError } from "@/server/errors";
 
@@ -43,6 +43,9 @@ describe("admin orders list", () => {
     expect(Object.fromEntries(list.tabs.map((t) => [t.id, t.count]))).toEqual({ "to-ship": 2, pending: 1, shipped: 1, delivered: 0, closed: 1, all: 5 });
     expect(list.attentionCount).toBe(1);
     expect((await listAdminOrders({ attention: true, tab: "all" })).items).toHaveLength(1);
+    // review m6: absurd page numbers are clamped instead of overflowing `skip`.
+    expect((await listAdminOrders({ page: 1e10 })).page).toBe(1000);
+    expect((await listAdminOrders({ page: -3 })).page).toBe(1);
   });
 
   it("searches across all statuses by number, name, email, phone and pincode", async () => {
@@ -65,8 +68,13 @@ describe("admin order actions", () => {
 
   it("moves forward only, fills timestamps and emails on shipped", async () => {
     const { orderId } = await paidOrder();
+    await expect(advanceOrderStatus(orderId, "DELIVERED", null)).rejects.toBeInstanceOf(ConflictError);
     await advanceOrderStatus(orderId, "PROCESSING", null);
     await expect(advanceOrderStatus(orderId, "PROCESSING", null)).rejects.toBeInstanceOf(ConflictError);
+    // Delivered only from Shipped (review m1), and `to` is validated at runtime (m2).
+    await expect(advanceOrderStatus(orderId, "DELIVERED", null)).rejects.toBeInstanceOf(ConflictError);
+    await expect(advanceOrderStatus(orderId, "FOO" as never, null)).rejects.toBeInstanceOf(ValidationError);
+    await advanceOrderStatus(orderId, "SHIPPED", null);
     await advanceOrderStatus(orderId, "DELIVERED", null);
     const o = await db.order.findUniqueOrThrow({ where: { id: orderId } });
     expect(o.status).toBe("DELIVERED");
@@ -176,12 +184,113 @@ describe("admin order actions", () => {
       throw new Error("provider down");
     };
     try {
-      await expect(refundOrder(a.orderId, null)).rejects.toThrow("provider down");
+      await expect(refundOrder(a.orderId, null)).rejects.toThrow(/provider down/);
+      await expect(refundOrder(a.orderId, null)).rejects.toBeInstanceOf(ConflictError);
     } finally {
       provider.refund = original;
     }
-    expect((await db.order.findUniqueOrThrow({ where: { id: a.orderId } })).status).toBe("PAID");
+    const o = await db.order.findUniqueOrThrow({ where: { id: a.orderId }, include: { events: true } });
+    expect(o).toMatchObject({ status: "PAID", needsAttention: true });
+    // flagAttentionOnce semantics: two failed attempts, one ATTENTION event.
+    const attention = o.events.filter((e) => e.type === "ATTENTION");
+    expect(attention).toHaveLength(1);
+    expect(attention[0].message).toMatch(/Refund attempt failed or timed out \(provider down\)/);
     expect(await stockOf(a.variantId)).toBe(4);
+  });
+
+  it("finalises with the provider's existing refund after a timed-out attempt, without refunding twice", async () => {
+    const a = await paidOrder(1);
+    const provider = getPaymentProvider();
+    const [origRefund, origFetch] = [provider.refund, provider.fetchRefunds];
+    let refundCalls = 0;
+    try {
+      // Attempt 1: the provider accepts the refund but the response never arrives.
+      provider.fetchRefunds = async () => [];
+      provider.refund = async () => {
+        refundCalls++;
+        throw new Error("Could not reach the payment provider");
+      };
+      await expect(refundOrder(a.orderId, null)).rejects.toBeInstanceOf(ConflictError);
+      expect((await db.order.findUniqueOrThrow({ where: { id: a.orderId } })).status).toBe("PAID");
+      // Attempt 2: the provider now lists that refund; it is recorded and no new refund is created.
+      provider.fetchRefunds = async () => [
+        { id: "rfnd_failed", amountPaise: 77800, status: "failed" },
+        { id: "rfnd_timeout", amountPaise: 1_000_000, status: "processed" },
+      ];
+      const r = await refundOrder(a.orderId, null);
+      expect(r.refundId).toBe("rfnd_timeout");
+    } finally {
+      provider.refund = origRefund;
+      provider.fetchRefunds = origFetch;
+    }
+    expect(refundCalls).toBe(1);
+    const o = await db.order.findUniqueOrThrow({ where: { id: a.orderId }, include: { events: true } });
+    expect(o).toMatchObject({ status: "REFUNDED", needsAttention: false });
+    expect(o.events.find((e) => e.type === "REFUNDED")?.message).toMatch(/rfnd_timeout already existed/);
+    expect(await stockOf(a.variantId)).toBe(5);
+  });
+
+  it("flags the order with the refund id when the refund is created but the order update fails", async () => {
+    const a = await paidOrder(1);
+    const provider = getPaymentProvider();
+    const origRefund = provider.refund;
+    const origTimeout = refundTxOptions.timeout;
+    refundTxOptions.timeout = 300;
+    provider.refund = async () => {
+      await new Promise((r) => setTimeout(r, 900));
+      return { id: "rfnd_slow" };
+    };
+    try {
+      await expect(refundOrder(a.orderId, null)).rejects.toThrow(/rfnd_slow was created but the order could not be updated/);
+    } finally {
+      provider.refund = origRefund;
+      refundTxOptions.timeout = origTimeout;
+    }
+    const o = await db.order.findUniqueOrThrow({ where: { id: a.orderId }, include: { events: true } });
+    expect(o).toMatchObject({ status: "PAID", needsAttention: true });
+    expect(o.events.some((e) => e.type === "ATTENTION" && e.message.includes("rfnd_slow"))).toBe(true);
+    expect(o.events.some((e) => e.type === "REFUNDED")).toBe(false);
+    expect(await stockOf(a.variantId)).toBe(4);
+  });
+
+  it("marks refunded manually with a required note, restocking only unshipped orders and never calling the provider", async () => {
+    const provider = getPaymentProvider();
+    const origRefund = provider.refund;
+    provider.refund = async () => {
+      throw new Error("must not be called");
+    };
+    try {
+      const a = await paidOrder(2);
+      await db.order.update({ where: { id: a.orderId }, data: { needsAttention: true } });
+      await expect(markRefundedManually(a.orderId, "  ", null)).rejects.toBeInstanceOf(ValidationError);
+      await markRefundedManually(a.orderId, "Refunded rfnd_abc in Razorpay", null);
+      const o = await db.order.findUniqueOrThrow({ where: { id: a.orderId }, include: { events: true } });
+      expect(o).toMatchObject({ status: "REFUNDED", needsAttention: false });
+      expect(o.events.find((e) => e.type === "REFUNDED")?.message).toBe("Marked as refunded manually: Refunded rfnd_abc in Razorpay; stock restocked");
+      expect(await stockOf(a.variantId)).toBe(5);
+      await expect(markRefundedManually(a.orderId, "again", null)).rejects.toBeInstanceOf(ConflictError);
+
+      const b = await paidOrder(1);
+      await advanceOrderStatus(b.orderId, "SHIPPED", null);
+      await markRefundedManually(b.orderId, "Refunded in dashboard", null);
+      expect(await stockOf(b.variantId)).toBe(4);
+
+      const c = await paidOrder(1);
+      await adminCancelOrder(c.orderId, "", null);
+      await expect(markRefundedManually(c.orderId, "Refunded in dashboard", null)).rejects.toBeInstanceOf(ConflictError);
+    } finally {
+      provider.refund = origRefund;
+    }
+  });
+
+  it("tells the page whether a refund goes through the configured provider", async () => {
+    const a = await paidOrder(1);
+    expect((await getAdminOrder(a.orderId)).refundVia).toBe("mock");
+    await db.order.update({ where: { id: a.orderId }, data: { paymentProvider: "razorpay" } });
+    expect((await getAdminOrder(a.orderId)).refundVia).toBeNull();
+    const u = await createUser();
+    const unpaid = await createOrderRow(u.id, { status: "PENDING_PAYMENT", paidAt: null });
+    expect((await getAdminOrder(unpaid.id)).refundVia).toBeNull();
   });
 
   it("refunds exactly once when two refunds race", async () => {

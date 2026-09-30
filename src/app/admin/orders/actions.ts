@@ -5,7 +5,7 @@ import { requireAdmin } from "@/server/admin-guard";
 import { actionError, type ActionResult } from "@/server/action-result";
 import { ValidationError } from "@/server/errors";
 import {
-  adminCancelOrder, advanceOrderStatus, BULK_LIMIT, bulkMarkProcessing, clearAttention, refundOrder, saveTracking, setAdminNote,
+  adminCancelOrder, advanceOrderStatus, BULK_LIMIT, bulkMarkProcessing, clearAttention, markRefundedManually, refundOrder, saveTracking, setAdminNote,
 } from "@/server/services/admin-orders";
 import type { FulfilmentStatus } from "@/lib/order-status";
 import type { TrackingInput } from "@/lib/validation/orders";
@@ -71,6 +71,17 @@ export async function refundOrderAction(id: string): Promise<ActionResult<{ refu
     const data = await refundOrder(id, userId);
     revalidatePath("/", "layout");
     return { ok: true, data };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function markRefundedAction(id: string, note: string): Promise<ActionResult<null>> {
+  try {
+    const { userId } = await requireAdmin();
+    await markRefundedManually(id, note, userId);
+    revalidatePath("/", "layout");
+    return { ok: true, data: null };
   } catch (err) {
     return actionError(err);
   }

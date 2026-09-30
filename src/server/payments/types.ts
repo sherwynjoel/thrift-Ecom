@@ -1,6 +1,8 @@
 export type ProviderName = "razorpay" | "mock";
 
 export interface ProviderOrder { id: string; amountPaise: number; currency: "INR" }
+/** A refund already recorded by the provider. status: "pending" | "processed" | "failed" (Razorpay's values). */
+export interface ProviderRefund { id: string; amountPaise: number; status: string }
 
 export interface PaymentProvider {
   readonly name: ProviderName;
@@ -9,4 +11,6 @@ export interface PaymentProvider {
   verifyPaymentSignature(input: { providerOrderId: string; paymentId: string; signature: string }): boolean;
   verifyWebhookSignature(rawBody: string, signature: string): boolean;
   refund(paymentId: string, amountPaise: number): Promise<{ id: string }>;
+  /** Refunds the provider already holds for a payment, so a retry after a timed-out refund never refunds twice. */
+  fetchRefunds(paymentId: string): Promise<ProviderRefund[]>;
 }

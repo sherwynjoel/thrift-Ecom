@@ -34,10 +34,16 @@ export default async function PrintOrdersPage({ searchParams }: { searchParams: 
         </p>
       )}
       <div className="flex flex-col items-center gap-6 p-4 print:block print:p-0">
-        {printable.map((o) => (
+        {printable.map((o, i) => (
           <div key={o.id} className="w-full overflow-x-auto print:overflow-visible">
             <div className="mx-auto w-fit shadow print:shadow-none">
-              {doc === "label" ? <LabelDocument order={o} settings={settings} /> : doc === "slip" ? <SlipDocument order={o} settings={settings} /> : <InvoiceDocument order={o} settings={settings} />}
+              {doc === "label" ? (
+                <LabelDocument order={o} settings={settings} last={i === printable.length - 1} />
+              ) : doc === "slip" ? (
+                <SlipDocument order={o} settings={settings} last={i === printable.length - 1} />
+              ) : (
+                <InvoiceDocument order={o} settings={settings} last={i === printable.length - 1} />
+              )}
             </div>
           </div>
         ))}

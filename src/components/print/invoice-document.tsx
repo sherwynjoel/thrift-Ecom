@@ -8,11 +8,12 @@ import type { StoreSettings } from "@/server/services/settings";
 
 const rupees = (p: number) => (p / 100).toFixed(2);
 
-export function InvoiceDocument({ order, settings }: { order: OrderView; settings: StoreSettings }) {
+/** `last` marks the final document in a print run: every other one forces a page break after itself. */
+export function InvoiceDocument({ order, settings, last = false }: { order: OrderView; settings: StoreSettings; last?: boolean }) {
   const inv = invoiceFromOrder(order, settings);
   const title = settings.gstin ? "Tax Invoice" : "Invoice";
   return (
-    <article className="print-page mx-auto w-full max-w-[210mm] bg-white p-6 text-[12px] leading-snug text-black sm:p-10" data-testid="invoice">
+    <article className={`print-page${last ? " print-page-last" : ""} mx-auto w-full max-w-[210mm] bg-white p-6 text-[12px] leading-snug text-black sm:p-10`} data-testid="invoice">
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-black/20 pb-4">
         <div>
           <p className="text-xl font-bold uppercase">{settings.sellerName || BRAND.name}</p>

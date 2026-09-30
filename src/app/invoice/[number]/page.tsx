@@ -25,7 +25,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ number
     <div className="min-h-dvh bg-neutral-200 print:bg-white">
       <PageSize size="A4" margin="12mm" />
       <PrintToolbar backHref={`/account/orders/${encodeURIComponent(order.number)}`} backLabel="Order" />
-      <div className="p-2 sm:p-6 print:p-0"><InvoiceDocument order={order} settings={settings} /></div>
+      <div className="p-2 sm:p-6 print:p-0"><InvoiceDocument order={order} settings={settings} last /></div>
     </div>
   );
 }
