@@ -117,16 +117,27 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
       const r = await placeOrderAction({ addressId: selectedId, couponCode: appliedCode, customerNote: note });
       if (!r.ok) {
         toast.error(r.message);
-        if (r.fieldErrors?.couponCode) {
-          // The code was refused at Pay time (e.g. it just hit its usage limit): drop it and re-quote
-          // without it, so the summary and the Pay button never show a discount the order won't get.
+        const couponRefused = r.fieldErrors?.couponCode;
+        if (couponRefused) {
+          // The code was refused at Pay time (e.g. it just hit its usage limit): drop it, so the
+          // summary and the Pay button never show a discount the order won't get.
           setAppliedCode(null);
           setCouponInput("");
-          setCouponError(r.fieldErrors.couponCode[0]);
-          const fresh = await quoteCheckoutAction(null);
-          if (fresh.ok) setPrice(fresh.data);
+          setCouponError(couponRefused[0]);
         }
-        // Any other server-side change (stock, offers) changes the page's form key and remounts the form.
+        // Re-quote after any failed Pay, with the code still applied (or none once it was refused):
+        // an offer or the shipping threshold can change without the lines changing, and then the
+        // form is not remounted by the refresh below and would keep showing a stale total (m3).
+        const code = couponRefused ? null : appliedCode;
+        const fresh = await quoteCheckoutAction(code);
+        if (fresh.ok) {
+          setPrice(fresh.data);
+          if (code && fresh.data.couponError) {
+            setAppliedCode(null);
+            setCouponError(fresh.data.couponError);
+          }
+        }
+        // A stock-driven line change changes the page's form key and remounts the form with the server's view.
         router.refresh();
         return;
       }

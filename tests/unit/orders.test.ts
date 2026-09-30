@@ -8,6 +8,7 @@ import { MockProvider } from "@/server/payments/mock";
 import { ConflictError, NotFoundError, PaymentError, StockChangedError, ValidationError } from "@/server/errors";
 import {
   cancelOrder, expireStaleOrders, getOrderForUser, getRetryPayload, listOrdersForUser, markOrderPaid, ORDER_TTL_MS, placeOrder,
+  releaseOrder, STALE_PROVIDER_ORDER_MS,
 } from "@/server/services/orders";
 
 const ADDRESS = { fullName: "Asha Rao", phone: "9876543210", line1: "12 MG Road", city: "Bengaluru", state: "Karnataka", pincode: "560001" };
@@ -244,7 +245,7 @@ describe("placeOrder", () => {
     // provider.createOrder()/providerOrderId update (serverless kill, DB blip) — the order is stuck
     // PENDING_PAYMENT with no providerOrderId, old enough that it can no longer be the one still
     // legitimately mid-flight.
-    await db.order.update({ where: { id: first.orderId }, data: { providerOrderId: null, createdAt: new Date(Date.now() - 11_000) } });
+    await db.order.update({ where: { id: first.orderId }, data: { providerOrderId: null, createdAt: new Date(Date.now() - STALE_PROVIDER_ORDER_MS - 1000) } });
     const second = await placeOrder(user.id, { addressId: address.id });
     expect(second.number).not.toBe(first.number);
     expect(second.providerOrderId).toMatch(/^mock_order_/);
@@ -318,6 +319,153 @@ describe("placeOrder", () => {
     expect((await db.order.findUniqueOrThrow({ where: { id: first.orderId } })).status).toBe("EXPIRED");
     expect(await stockOf(variantA.id)).toBe(3); // 5 - 1 (user's retry) - 1 (other's overlapping order)
     expect(await stockOf(variantB.id)).toBe(4); // 5 - 1 (other's overlapping order); user's B was restocked
+  });
+
+  describe("slow payment provider (I-1)", () => {
+    /** Makes the next provider.createOrder call block until `release()` is called; `entered` resolves once it is in flight. */
+    function gateNextCreateOrder() {
+      const original = MockProvider.prototype.createOrder;
+      let release!: () => void;
+      let markEntered!: () => void;
+      const gate = new Promise<void>((r) => { release = r; });
+      const entered = new Promise<void>((r) => { markEntered = r; });
+      const spy = vi.spyOn(MockProvider.prototype, "createOrder").mockImplementationOnce(async function (this: MockProvider, input) {
+        markEntered();
+        await gate;
+        return original.call(this, input);
+      });
+      return { release, entered, spy };
+    }
+
+    it("does not treat an order as stale while a slow provider call (up to the 15 s Razorpay timeout) may still finish", () => {
+      expect(STALE_PROVIDER_ORDER_MS).toBeGreaterThanOrEqual(20_000);
+    });
+
+    it("never returns a live payload for an order superseded while its slow createOrder was in flight", async () => {
+      const { user, variant, address } = await buyer({ qty: 1, stock: 5 });
+      const { release, entered, spy } = gateNextCreateOrder();
+      const slow = placeOrder(user.id, { addressId: address.id });
+      const slowSettled = slow.then(() => "resolved" as const, (e: unknown) => e);
+      await entered;
+      const first = await db.order.findFirstOrThrow({ where: { userId: user.id } });
+      expect(first.providerOrderId).toBeNull();
+      // Time passes past the stale threshold while the provider is still thinking; a second attempt supersedes.
+      await db.order.update({ where: { id: first.id }, data: { createdAt: new Date(Date.now() - STALE_PROVIDER_ORDER_MS - 1000) } });
+      const second = await placeOrder(user.id, { addressId: address.id });
+      expect(second.orderId).not.toBe(first.id);
+      expect(await stockOf(variant.id)).toBe(4);
+
+      release();
+      const outcome = await slowSettled;
+      spy.mockRestore();
+      expect(outcome).toBeInstanceOf(PaymentError);
+      expect((outcome as PaymentError).message).toMatch(/replaced/i);
+      const firstAfter = await db.order.findUniqueOrThrow({ where: { id: first.id } });
+      expect(firstAfter.status).toBe("EXPIRED");
+      expect(firstAfter.providerOrderId).toBeNull();
+      expect(await stockOf(variant.id)).toBe(4);
+      expect((await db.order.findUniqueOrThrow({ where: { id: second.orderId } })).status).toBe("PENDING_PAYMENT");
+    });
+
+    it("does not supersede an order whose provider call is merely slow (inside the provider timeout)", async () => {
+      const { user, variant, address } = await buyer({ qty: 1, stock: 5 });
+      const { release, entered, spy } = gateNextCreateOrder();
+      const slow = placeOrder(user.id, { addressId: address.id });
+      await entered;
+      const first = await db.order.findFirstOrThrow({ where: { userId: user.id } });
+      await db.order.update({ where: { id: first.id }, data: { createdAt: new Date(Date.now() - 15_000) } });
+      // The identical retry reuses (waits for) the in-flight order instead of superseding it.
+      await expect(placeOrder(user.id, { addressId: address.id })).rejects.toBeInstanceOf(ConflictError);
+      release();
+      const payload = await slow;
+      spy.mockRestore();
+      expect(payload.orderId).toBe(first.id);
+      expect((await db.order.findUniqueOrThrow({ where: { id: first.id } })).status).toBe("PENDING_PAYMENT");
+      expect(await db.order.count({ where: { userId: user.id } })).toBe(1);
+      expect(await stockOf(variant.id)).toBe(4);
+    });
+  });
+
+  it("does not hand back a reused order's payload once another attempt has superseded it (m2)", async () => {
+    const { user, address } = await buyer({ qty: 1, stock: 5 });
+    const first = await placeOrder(user.id, { addressId: address.id });
+    expect(first.providerOrderId).toMatch(/^mock_order_/);
+    // Between the identical retry deciding to reuse the order and the reuse wait's first read, a
+    // different attempt supersedes it. Simulated by expiring it just before that read.
+    const original = db.order.findUnique;
+    let superseded = false;
+    db.order.findUnique = (async (args: { where: { id?: string }; select?: { providerOrderId?: boolean } }) => {
+      if (!superseded && args.where.id === first.orderId && args.select?.providerOrderId) {
+        superseded = true;
+        await db.order.update({ where: { id: first.orderId }, data: { status: "EXPIRED" } });
+      }
+      return original.call(db.order, args as Parameters<typeof original>[0]);
+    }) as unknown as typeof original;
+    try {
+      await expect(placeOrder(user.id, { addressId: address.id })).rejects.toBeInstanceOf(PaymentError);
+    } finally {
+      db.order.findUnique = original;
+    }
+    expect(superseded).toBe(true);
+  });
+
+  describe("supersede vs a concurrent release of the same order (m1)", () => {
+    const lockWaiters = async () => {
+      const rows = await db.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+      return Number(rows[0]!.n);
+    };
+    const waitFor = async (cond: () => Promise<boolean>) => {
+      const deadline = Date.now() + 5000;
+      while (!(await cond())) {
+        if (Date.now() > deadline) throw new Error("timed out waiting for lock waiters");
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    };
+
+    it("does not deadlock when a releaseOrder queues behind a superseding placeOrder on the same variant", async () => {
+      const { user, variant, address } = await buyer({ qty: 1, stock: 5 });
+      const first = await placeOrder(user.id, { addressId: address.id });
+      await addItem({ userId: user.id }, variant.id, 1); // cart changed -> the next attempt supersedes `first`
+
+      // Hold the variant row so both contenders queue up behind it in a known order: placeOrder
+      // first, then a release of the order it is about to supersede (the creator's failure path).
+      let unblock: (() => void) | undefined;
+      const blocker = db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "ProductVariant" WHERE id = ${variant.id} FOR UPDATE`;
+        await new Promise<void>((r) => { unblock = r; });
+      }, { timeout: 15_000 });
+      await waitFor(async () => unblock !== undefined);
+
+      const retry = placeOrder(user.id, { addressId: address.id }).then((v) => v, (e: unknown) => e);
+      await waitFor(async () => (await lockWaiters()) >= 1);
+      const release = releaseOrder(first.orderId, ["PENDING_PAYMENT"], "CANCELLED", "PAYMENT_FAILED", "test release").then((v) => v, (e: unknown) => e);
+      await waitFor(async () => (await lockWaiters()) >= 2);
+      unblock!();
+      await blocker;
+
+      const [retryOutcome, releaseOutcome] = await Promise.all([retry, release]);
+      expect(retryOutcome).not.toBeInstanceOf(Error);
+      expect(releaseOutcome).not.toBeInstanceOf(Error);
+      expect(releaseOutcome).toBe(false); // the supersede won; the late release is a no-op
+      expect((await db.order.findUniqueOrThrow({ where: { id: first.orderId } })).status).toBe("EXPIRED");
+      expect(await stockOf(variant.id)).toBe(3); // 5 - 2 (new order); the first order's unit restocked exactly once
+    });
+
+    it("never deadlocks across many concurrent supersede + release races", async () => {
+      for (let i = 0; i < 15; i++) {
+        // fresh user + product each round (no resetDb here: it restarts the order-number sequence mid-test)
+        const { user, variant, address } = await buyer({ qty: 1, stock: 5 });
+        const first = await placeOrder(user.id, { addressId: address.id });
+        await addItem({ userId: user.id }, variant.id, 1);
+        const [retry, release] = await Promise.allSettled([
+          placeOrder(user.id, { addressId: address.id }),
+          releaseOrder(first.orderId, ["PENDING_PAYMENT"], "CANCELLED", "PAYMENT_FAILED", "test release"),
+        ]);
+        expect(retry.status, String(retry.status === "rejected" ? retry.reason : "")).toBe("fulfilled");
+        expect(release.status, String(release.status === "rejected" ? release.reason : "")).toBe("fulfilled");
+        expect(await stockOf(variant.id)).toBe(3);
+      }
+    }, 60_000);
   });
 });
 

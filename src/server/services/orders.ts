@@ -155,7 +155,13 @@ function sameOpenOrder(
   return have.every((it) => want.get(it.variantId!) === it.quantity);
 }
 
-const STALE_PROVIDER_ORDER_MS = 10_000;
+/**
+ * How long a PENDING_PAYMENT order may sit without a `providerOrderId` before it counts as abandoned
+ * (its creator died). Must stay comfortably above the payment provider's request timeout (Razorpay:
+ * 15 s, `payments/razorpay.ts`), or a creator that is merely slow gets superseded while its
+ * `createOrder` call is still in flight (I-1). The `providerOrderId` write is guarded as well.
+ */
+export const STALE_PROVIDER_ORDER_MS = 30_000;
 const REUSE_MIN_REMAINING_MS = 5 * 60 * 1000;
 
 /**
@@ -195,18 +201,39 @@ async function waitForCheckoutPayload(orderId: string, provider: PaymentProvider
   for (;;) {
     const o = await db.order.findUnique({ where: { id: orderId }, select: { status: true, number: true, totalPaise: true, providerOrderId: true, shipName: true, shipPhone: true, email: true } });
     if (!o) throw new NotFoundError("Order");
+    // Only ever hand back a payload for an order that is still payable, checked before looking at
+    // `providerOrderId` (m2): a different attempt may have superseded it after this call chose to
+    // reuse it. A CANCELLED order here is its creator failing to start payment and releasing it
+    // (M-1) — stop polling at once instead of waiting out the timeout to say something misleading.
+    if (o.status !== "PENDING_PAYMENT") {
+      throw new PaymentError(o.status === "EXPIRED" ? CHECKOUT_REPLACED : "Could not start the payment for this order. Please try again.");
+    }
     if (o.providerOrderId) {
       return {
         orderId, number: o.number, amountPaise: o.totalPaise, currency: "INR", provider: provider.name,
         providerOrderId: o.providerOrderId, keyId: provider.publicKey, prefill: { name: o.shipName, email: o.email, contact: o.shipPhone },
       };
     }
-    // The sibling that created this order failed to start payment for it and released it (M-1) —
-    // stop polling immediately instead of waiting out the full timeout to say something misleading.
-    if (o.status !== "PENDING_PAYMENT") throw new PaymentError("Could not start the payment for this order. Please try again.");
     if (Date.now() >= deadline) throw new ConflictError("This order is still being set up. Please try again in a moment.");
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
+}
+
+const CHECKOUT_REPLACED = "This checkout was replaced — please try again.";
+
+/**
+ * Locks the user's open (unexpired PENDING_PAYMENT) order rows, in id order. Taken before
+ * `lockVariants` so placeOrder acquires Order rows before ProductVariant rows — the same order every
+ * release path uses (`releaseOrderTx` updates the order row, then restocks its variants). Locking
+ * variants first and the order row second deadlocked against a concurrent `releaseOrder` of the
+ * order being superseded (m1).
+ */
+async function lockOpenOrders(tx: Tx, userId: string, now: Date): Promise<void> {
+  await tx.$queryRaw`
+    SELECT id FROM "Order"
+    WHERE "userId" = ${userId} AND status = 'PENDING_PAYMENT' AND "expiresAt" > ${now}
+    ORDER BY id FOR UPDATE
+  `;
 }
 
 /** Locks the coupon row so concurrent checkouts using the same code are serialized. */
@@ -274,6 +301,7 @@ export async function placeOrder(userId: string, input: unknown): Promise<Checko
 
   const outcome = await db.$transaction(async (tx) => {
     await lockUser(tx, userId);
+    await lockOpenOrders(tx, userId, now);
 
     // Re-read the user's open orders now that we hold their lock: a sibling placeOrder call may have
     // just committed one. Reuse it if it is this exact attempt (N1); otherwise supersede it below,
@@ -344,7 +372,14 @@ export async function placeOrder(userId: string, input: unknown): Promise<Checko
     await releaseOrder(order.id, ["PENDING_PAYMENT"], "CANCELLED", "PAYMENT_FAILED", "Could not start the payment; order cancelled and stock released");
     throw err instanceof PaymentError ? err : new PaymentError("Could not start the payment. Please try again.");
   }
-  await db.order.update({ where: { id: order.id }, data: { providerOrderId } });
+  // Guarded (I-1): if this call was slow enough for a later attempt to supersede the order while
+  // `createOrder` was in flight, the order is EXPIRED and its stock released — never hand back a live
+  // payment for it. The orphaned provider order is harmless: nothing was paid against it.
+  const recorded = await db.order.updateMany({ where: { id: order.id, status: "PENDING_PAYMENT" }, data: { providerOrderId } });
+  if (recorded.count !== 1) {
+    console.warn("[orders] order superseded while its payment was being started", order.number);
+    throw new PaymentError(CHECKOUT_REPLACED);
+  }
 
   return {
     orderId: order.id, number: order.number, amountPaise: order.totalPaise, currency: "INR", provider: provider.name,
