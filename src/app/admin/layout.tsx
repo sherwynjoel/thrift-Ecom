@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import { AdminNav } from "@/components/admin/admin-nav";
 import { SignOutButton } from "@/components/storefront/account/sign-out-button";
 import { BRAND } from "@/config/brand";
+import { countToShip } from "@/server/services/admin-orders";
 import { requireAdminPage } from "./guard";
 
 export const metadata: Metadata = { title: { default: "Admin", template: `%s · Admin | ${BRAND.name}` }, robots: { index: false, follow: false } };
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   await requireAdminPage();
+  const toShip = await countToShip();
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[220px_1fr]" data-testid="admin-shell">
       <aside className="flex flex-wrap items-center justify-between gap-4 border-b border-border bg-surface p-4 lg:flex-col lg:items-stretch lg:justify-start lg:gap-0 lg:sticky lg:top-0 lg:h-dvh lg:border-b-0 lg:border-r">
@@ -19,7 +21,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             nav below on phones, and the original brand / nav / sign-out column on lg+, without ever
             mounting <SignOutButton> twice (it would duplicate data-testid="sign-out"). */}
         <div className="order-2 w-full lg:order-1">
-          <AdminNav />
+          <AdminNav toShipCount={toShip} />
         </div>
         <div className="order-1 lg:order-2 lg:mt-6">
           <SignOutButton />
