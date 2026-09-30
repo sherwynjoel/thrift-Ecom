@@ -58,6 +58,18 @@ export class PaymentError extends DomainError {
   }
 }
 
+export class LengthRequiredError extends DomainError {
+  constructor() {
+    super("LENGTH_REQUIRED", "Upload size unknown. Please try again.", 411);
+  }
+}
+
+export class PayloadTooLargeError extends DomainError {
+  constructor(message = "This upload is too large") {
+    super("PAYLOAD_TOO_LARGE", message, 413);
+  }
+}
+
 export interface StockIssue { variantId: string; name: string; requested: number; available: number }
 
 export class StockChangedError extends DomainError {

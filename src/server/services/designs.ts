@@ -63,8 +63,25 @@ export async function getStudioProduct(slug: string): Promise<StudioProduct> {
   };
 }
 
-export async function uploadDesignAsset(file: File): Promise<{ key: string; url: string }> {
-  return storeImage(file, DESIGN_ASSET_PREFIX, { maxBytes: MAX_DESIGN_ASSET_BYTES });
+/** Uploaded studio images belong to the uploader; only they can use them in a design. */
+export function assetOwnerWhere(ref: CartRef): Prisma.DesignAssetWhereInput {
+  return "userId" in ref ? { userId: ref.userId } : { userId: null, cartToken: ref.guestToken };
+}
+
+function ownerData(ref: CartRef): { userId: string | null; cartToken: string | null } {
+  return "userId" in ref ? { userId: ref.userId, cartToken: null } : { userId: null, cartToken: ref.guestToken };
+}
+
+/** Stores the file and records it for its owner; never used within 24 h, it is purged (see purge-designs). */
+export async function uploadDesignAsset(ref: CartRef, file: File): Promise<{ key: string; url: string }> {
+  const stored = await storeImage(file, DESIGN_ASSET_PREFIX, { maxBytes: MAX_DESIGN_ASSET_BYTES });
+  try {
+    await db.designAsset.create({ data: { key: stored.key, ...ownerData(ref) } });
+  } catch (err) {
+    await getStorage().delete(stored.key).catch((e) => console.error("[designs] asset cleanup failed", stored.key, e));
+    throw err;
+  }
+  return stored;
 }
 
 function checkPng(bytes: Uint8Array, side: DesignSide, kind: "Preview" | "Print"): void {
@@ -84,6 +101,8 @@ function checkPng(bytes: Uint8Array, side: DesignSide, kind: "Preview" | "Print"
       : PRINT_SIZES.some((s) => s.width === dims.width && s.height === dims.height));
   if (!ok) throw new ValidationError({ [field]: [`The ${what} has the wrong format or size`] });
 }
+
+const ASSET_GONE = "An image in this design is no longer available. Please upload it again.";
 
 function assetKeyFromUrl(url: string): string {
   const key = uploadKeyFromUrl(url);
@@ -120,6 +139,10 @@ export async function createDesignAndAddToCart(ref: CartRef, input: CreateDesign
     checked.push({ side, upload, json: check.json });
   }
   if (totalBytes > MAX_DESIGN_UPLOAD_BYTES) throw new ValidationError({ design: ["This design is too large to upload. Try smaller images."] });
+  const keys = [...assetKeys];
+  if (keys.length && (await db.designAsset.count({ where: { key: { in: keys }, ...assetOwnerWhere(ref) } })) !== keys.length) {
+    throw new ValidationError({ design: [ASSET_GONE] });
+  }
 
   const storage = getStorage();
   const written: string[] = [];
@@ -129,8 +152,7 @@ export async function createDesignAndAddToCart(ref: CartRef, input: CreateDesign
     written.push(key);
     return key;
   };
-  const owner = "userId" in ref ? { userId: ref.userId, cartToken: null } : { userId: null, cartToken: ref.guestToken };
-  const data: Prisma.DesignUncheckedCreateInput = { ...owner, productId: input.productId, colorName: variant.colorName, assetKeys: [...assetKeys], rightsConfirmed: true };
+  const data: Prisma.DesignUncheckedCreateInput = { ...ownerData(ref), productId: input.productId, colorName: variant.colorName, assetKeys: keys, rightsConfirmed: true };
   try {
     for (const { side, upload, json } of checked) {
       const previewKey = await put(upload.preview, "previews");
@@ -139,7 +161,15 @@ export async function createDesignAndAddToCart(ref: CartRef, input: CreateDesign
       if (side === "front") Object.assign(data, { frontJson: stored, frontPreviewKey: previewKey, frontPrintKey: printKey });
       else Object.assign(data, { backJson: stored, backPreviewKey: previewKey, backPrintKey: printKey });
     }
-    const design = await db.design.create({ data, select: { id: true } });
+    const design = await db.$transaction(async (tx) => {
+      const created = await tx.design.create({ data, select: { id: true } });
+      // Marking the assets as used keeps the purge off them; a row it deleted since the check above fails the design.
+      if (keys.length) {
+        const marked = await tx.designAsset.updateMany({ where: { key: { in: keys }, ...assetOwnerWhere(ref) }, data: { designId: created.id } });
+        if (marked.count !== keys.length) throw new ValidationError({ design: [ASSET_GONE] });
+      }
+      return created;
+    });
     try {
       return { designId: design.id, cart: await addItem(ref, variant.id, input.quantity, { designId: design.id }) };
     } catch (err) {

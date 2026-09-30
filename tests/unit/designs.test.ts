@@ -40,7 +40,7 @@ describe("designs service", () => {
 
   it("stores four files, derives asset keys from the JSON and adds a custom line", async () => {
     const ids = await blank();
-    const asset = await uploadDesignAsset(new File([fakePng(1200, 1600)], "art.png", { type: "image/png" }));
+    const asset = await uploadDesignAsset({ guestToken: "g1" }, new File([fakePng(1200, 1600)], "art.png", { type: "image/png" }));
     expect(asset.key).toMatch(/^designs\/assets\/[a-z0-9-]+\.png$/);
     const before = { print: files("print"), previews: files("previews") };
     const { designId, cart } = await createDesignAndAddToCart({ guestToken: "g1" }, input(ids, { back: side([{ type: "Image", src: asset.url, data: { kind: "image" } }]) }));
@@ -52,6 +52,23 @@ describe("designs service", () => {
     expect(files("previews")).toBe(before.previews + 2);
     expect(cart.items).toHaveLength(1);
     expect(cart.items[0].design).toMatchObject({ id: designId, label: "Custom print: front + back" });
+    expect(await db.designAsset.findUniqueOrThrow({ where: { key: asset.key } })).toMatchObject({ cartToken: "g1", designId });
+  });
+
+  it("only accepts images uploaded by the same shopper, and hands them over on login", async () => {
+    const ids = await blank();
+    const imageSide = (url: string) => side([{ type: "Image", src: url, data: { kind: "image" } }]);
+    const theirs = await uploadDesignAsset({ guestToken: "other" }, new File([fakePng(10, 10)], "a.png", { type: "image/png" }));
+    await expect(createDesignAndAddToCart({ guestToken: "g1" }, input(ids, { front: imageSide(theirs.url) }))).rejects.toBeInstanceOf(ValidationError);
+    // An image URL that was never uploaded through the studio (no record) is refused too.
+    await storage.put("designs/assets/stray.png", fakePng(10, 10), "image/png");
+    await expect(createDesignAndAddToCart({ guestToken: "g1" }, input(ids, { front: imageSide("/api/uploads/designs/assets/stray.png") }))).rejects.toBeInstanceOf(ValidationError);
+    expect(await db.design.count()).toBe(0);
+    const mine = await uploadDesignAsset({ guestToken: "g1" }, new File([fakePng(10, 10)], "b.png", { type: "image/png" }));
+    const u = await createUser();
+    await mergeGuestCartIntoUser("g1", u.id);
+    expect(await db.designAsset.findUniqueOrThrow({ where: { key: mine.key } })).toMatchObject({ userId: u.id, cartToken: null });
+    await expect(createDesignAndAddToCart({ userId: u.id }, input(ids, { front: imageSide(mine.url) }))).resolves.toMatchObject({ designId: expect.any(String) });
   });
 
   it("accepts the reduced print size used by small devices", async () => {
@@ -111,10 +128,10 @@ describe("designs service", () => {
   it("accepts design assets up to 10 MB", async () => {
     const big = new Uint8Array(6 * 1024 * 1024);
     big.set(fakePng(10, 10));
-    expect((await uploadDesignAsset(new File([big], "big.png", { type: "image/png" }))).url).toMatch(/^\/api\/uploads\/designs\/assets\//);
+    expect((await uploadDesignAsset({ guestToken: "g1" }, new File([big], "big.png", { type: "image/png" }))).url).toMatch(/^\/api\/uploads\/designs\/assets\//);
     const huge = new Uint8Array(10 * 1024 * 1024 + 1);
     huge.set(fakePng(10, 10));
-    await expect(uploadDesignAsset(new File([huge], "huge.png", { type: "image/png" }))).rejects.toBeInstanceOf(ValidationError);
+    await expect(uploadDesignAsset({ guestToken: "g1" }, new File([huge], "huge.png", { type: "image/png" }))).rejects.toBeInstanceOf(ValidationError);
   });
 
   it("lists customizable products and loads one for the studio", async () => {

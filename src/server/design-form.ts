@@ -1,6 +1,6 @@
 import { ValidationError } from "@/server/errors";
 import type { CreateDesignInput, DesignSideUpload } from "@/server/services/designs";
-import type { DesignSide } from "@/lib/studio/constants";
+import { MAX_SIDE_JSON_CHARS, type DesignSide } from "@/lib/studio/constants";
 
 export async function parseDesignForm(form: FormData): Promise<CreateDesignInput> {
   const str = (k: string) => {
@@ -14,6 +14,8 @@ export async function parseDesignForm(form: FormData): Promise<CreateDesignInput
   const json = (k: string): unknown => {
     const s = str(k);
     if (!s) return null;
+    // Checked before parsing: the field could be as large as the whole body.
+    if (s.length > MAX_SIDE_JSON_CHARS) throw new ValidationError({ [k]: ["This design is too complex. Remove some layers."] });
     try {
       return JSON.parse(s) as unknown;
     } catch {

@@ -191,13 +191,14 @@ export async function mergeGuestCartIntoUser(guestToken: string, userId: string)
   const handOver = { where: { cartToken: guestToken, userId: null }, data: { userId, cartToken: null } };
   const guest = await db.cart.findUnique({ where: { guestToken }, include: { items: { orderBy: { createdAt: "asc" }, include: { variant: true } } } });
   if (!guest) {
-    await db.design.updateMany(handOver);
+    await db.$transaction([db.design.updateMany(handOver), db.designAsset.updateMany(handOver)]);
     return getCart({ userId });
   }
   const userCartId = await findOrCreateCartId({ userId });
   await db.$transaction(async (tx) => {
     // Designs made as a guest belong to the user from now on (the studio's "Edit design" needs this).
     await tx.design.updateMany(handOver);
+    await tx.designAsset.updateMany(handOver);
     const held = new Map<string, number>();
     for (const u of await tx.cartItem.findMany({ where: { cartId: userCartId }, select: { variantId: true, quantity: true } })) {
       held.set(u.variantId, (held.get(u.variantId) ?? 0) + u.quantity);

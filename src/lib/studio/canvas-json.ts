@@ -41,6 +41,9 @@ function finiteNumber(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
+/** Largest width/height kept for an object (its unscaled size; a 10 MB upload is far below this). */
+const MAX_OBJECT_SIZE = 20_000;
+
 function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
 }
@@ -54,9 +57,10 @@ function sanitizeGeometry(o: Record<string, unknown>, out: Record<string, unknow
   out.left = clamp(finiteNumber(o.left) ?? 0, -5 * CANVAS_WIDTH, 5 * CANVAS_WIDTH);
   out.top = clamp(finiteNumber(o.top) ?? 0, -5 * CANVAS_HEIGHT, 5 * CANVAS_HEIGHT);
   const width = finiteNumber(o.width);
-  if (width !== null) out.width = Math.max(0, width);
+  // Non-finite sizes are dropped so Fabric falls back to the natural size (text box / image pixels).
+  if (width !== null) out.width = clamp(width, 0, MAX_OBJECT_SIZE);
   const height = finiteNumber(o.height);
-  if (height !== null) out.height = Math.max(0, height);
+  if (height !== null) out.height = clamp(height, 0, MAX_OBJECT_SIZE);
   out.scaleX = clamp(finiteNumber(o.scaleX) ?? 1, 0.01, 50);
   out.scaleY = clamp(finiteNumber(o.scaleY) ?? 1, 0.01, 50);
   out.angle = clamp(finiteNumber(o.angle) ?? 0, -360, 360);
@@ -72,7 +76,7 @@ function sanitizeText(o: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { type: String(o.type), text: o.text };
   sanitizeGeometry(o, out);
   const fontId = isRecord(o.data) && isStudioFontId(o.data.fontId) ? o.data.fontId : null;
-  if (fontId) out.data = { fontId };
+  out.data = { kind: "text", ...(fontId ? { fontId } : {}) };
   if (typeof o.fill === "string" && HEX6.test(o.fill)) out.fill = o.fill.toLowerCase();
   const fontSize = finiteNumber(o.fontSize);
   if (fontSize !== null) out.fontSize = clamp(fontSize, 8, 400);
@@ -97,7 +101,7 @@ function escapesWithDotDot(src: string): boolean {
 function sanitizeImage(o: Record<string, unknown>, assetUrlPrefix: string): Record<string, unknown> | null {
   const src = o.src;
   if (typeof src !== "string" || !src.startsWith(assetUrlPrefix) || escapesWithDotDot(src)) return null;
-  const out: Record<string, unknown> = { type: String(o.type), src };
+  const out: Record<string, unknown> = { type: String(o.type), src, data: { kind: "image" } };
   sanitizeGeometry(o, out);
   return out;
 }

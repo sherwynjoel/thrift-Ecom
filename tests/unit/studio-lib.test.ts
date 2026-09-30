@@ -95,10 +95,11 @@ describe("canvas JSON", () => {
     if (!r.ok) throw new Error("expected ok");
     expect(r.json.version).toBe("6.4.0");
     expect(r.json.objects).toHaveLength(3);
-    expect(r.json.objects[0]).toMatchObject({ type: "Textbox", text: "HELLO", data: { fontId: "anton" } });
+    expect(r.json.objects[0]).toMatchObject({ type: "Textbox", text: "HELLO" });
+    expect(r.json.objects[0].data).toEqual({ kind: "text", fontId: "anton" });
     expect(r.json.objects[0].fontFamily).toBeUndefined(); // dropped: re-derived from fontId on load, never trusted from storage
     expect(r.json.objects[1]).toMatchObject({ type: "Image", src: `${prefix}a.png` });
-    expect(r.json.objects[1].data).toBeUndefined(); // images carry no whitelisted data
+    expect(r.json.objects[1].data).toEqual({ kind: "image" }); // rebuilt, never copied from the client
     expect(r.assetUrls).toEqual([`${prefix}a.png`]);
   });
 
@@ -117,6 +118,7 @@ describe("canvas JSON", () => {
     if (!r.ok) throw new Error("expected ok");
     const [o] = r.json.objects;
     expect(o.text).toBe("ok");
+    expect(o.data).toEqual({ kind: "text" });
     expect(o.fill).toBeUndefined();
     expect(o.clipPath).toBeUndefined();
     expect(o.shadow).toBeUndefined();
@@ -133,7 +135,7 @@ describe("canvas JSON", () => {
       objects: [{
         type: "Image", src: `${prefix}a.png`,
         clipPath: { type: "image", src: "https://evil.example/z.png" },
-        scaleX: 1e12, scaleY: Number.NaN, angle: Number.POSITIVE_INFINITY, left: Number.NaN, opacity: 5,
+        scaleX: 1e12, scaleY: Number.NaN, angle: Number.POSITIVE_INFINITY, left: Number.NaN, opacity: 5, width: 1e9, height: Number.POSITIVE_INFINITY,
       }],
     }, prefix);
     if (!r.ok) throw new Error("expected ok");
@@ -144,6 +146,9 @@ describe("canvas JSON", () => {
     expect(o.angle).toBe(0);
     expect(o.left).toBe(0);
     expect(o.opacity).toBe(1);
+    expect(o.width).toBe(20000);
+    expect(o.height).toBeUndefined(); // non-finite: Fabric uses the natural size
+    expect(o.data).toEqual({ kind: "image" });
   });
 
   it("rejects foreign images, unknown layers, oversize text and too many layers", () => {
