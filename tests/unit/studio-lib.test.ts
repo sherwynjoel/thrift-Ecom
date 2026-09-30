@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { dpiLevel, dpiMessage, effectiveDpi, objectDpi } from "@/lib/studio/dpi";
 import { canRedo, canUndo, createHistory, pushHistory, redoHistory, undoHistory } from "@/lib/studio/history";
 import { fontIdsIn, toSideJson, validateSideJson, withFontFamilies } from "@/lib/studio/canvas-json";
-import { isDarkHex, safeHex, shadeHex, shirtSvgMarkup } from "@/lib/studio/shirt";
+import { isDarkHex, safeHex, shadeHex, SHIRT_GEOMETRY, shirtSvgMarkup } from "@/lib/studio/shirt";
 import { clampScale, pinchTransform } from "@/lib/studio/gesture";
-import { HISTORY_LIMIT, isStudioFontId, MAX_OBJECTS_PER_SIDE, PRINT_AREA, PRINT_SIZES, UNITS_PER_INCH } from "@/lib/studio/constants";
+import { CANVAS_HEIGHT, CANVAS_WIDTH, HISTORY_LIMIT, isStudioFontId, MAX_OBJECTS_PER_SIDE, PRINT_AREA, PRINT_SIZES, UNITS_PER_INCH } from "@/lib/studio/constants";
 
 describe("constants", () => {
   it("keep the print area at 12 × 16 in and both print sizes at 3:4", () => {
@@ -176,6 +176,39 @@ describe("shirt mockup", () => {
     expect(shirtSvgMarkup("#ffffff", "front")).not.toContain("data-guide");
     expect(shirtSvgMarkup("#ffffff", "front")).not.toBe(shirtSvgMarkup("#ffffff", "back"));
     expect(shirtSvgMarkup("#ffffff", "back", { background: "#f2f2f2" })).toContain('fill="#f2f2f2"');
+  });
+
+  it("has tee proportions with the print area centred on the chest", () => {
+    const g = SHIRT_GEOMETRY;
+    const bodyWidth = CANVAS_WIDTH - 2 * g.shoulderX;
+    const bodyHeight = g.hemY - g.shoulderY;
+    expect(bodyHeight / bodyWidth).toBeGreaterThan(1.1);
+    expect(bodyHeight / bodyWidth).toBeLessThan(1.2);
+    // 460 units = 23 in chest: a real oversized tee, and the 12 in print covers about half of it
+    expect(bodyWidth / UNITS_PER_INCH).toBe(23);
+    expect(PRINT_AREA.left + PRINT_AREA.width / 2).toBe(CANVAS_WIDTH / 2);
+    expect(PRINT_AREA.left).toBeGreaterThan(g.armpitX);
+    expect(PRINT_AREA.left + PRINT_AREA.width).toBeLessThan(CANVAS_WIDTH - g.armpitX);
+    // starts below the front collar rib and ends well above the hem
+    expect(PRINT_AREA.top).toBeGreaterThan(g.frontNeckY + g.ribWidth);
+    expect(PRINT_AREA.top - (g.frontNeckY + g.ribWidth)).toBeLessThanOrEqual(3 * UNITS_PER_INCH);
+    expect(g.hemY - (PRINT_AREA.top + PRINT_AREA.height)).toBeGreaterThanOrEqual(4 * UNITS_PER_INCH);
+    // short sleeves that drop below the shoulder line, and a higher neckline on the back
+    expect(g.cuffOuterY).toBeGreaterThan(g.shoulderY);
+    expect(g.cuffInnerY).toBeLessThan(PRINT_AREA.top + PRINT_AREA.height);
+    expect(g.backNeckY).toBeLessThan(g.frontNeckY);
+    // the whole tee fits the canvas with room around it
+    expect(g.cuffOuterX).toBeGreaterThan(0);
+    expect(g.neckY).toBeGreaterThan(0);
+    expect(g.hemY).toBeLessThan(CANVAS_HEIGHT);
+  });
+
+  it("puts the print guide at the print area and keeps the markup free of NaN", () => {
+    for (const side of ["front", "back"] as const) {
+      const svg = shirtSvgMarkup("#d4ff3f", side, { guide: true });
+      expect(svg).toContain(`x="${PRINT_AREA.left}" y="${PRINT_AREA.top}" width="${PRINT_AREA.width}" height="${PRINT_AREA.height}"`);
+      expect(svg).not.toMatch(/NaN|undefined|Infinity/);
+    }
   });
 
   it("shades and classifies colors", () => {

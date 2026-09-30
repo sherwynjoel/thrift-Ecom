@@ -7,7 +7,7 @@ export type StudioTab = "product" | "upload" | "text" | "layers";
 
 /**
  * Desktop: the right-hand tool column. Mobile: a non-modal bottom sheet (tab row + sticky price footer);
- * tapping a tab expands the content to at most 50dvh, the chevron collapses it. One DOM for both layouts.
+ * tapping a tab expands the content to at most 40dvh, the chevron collapses it. One DOM for both layouts.
  */
 export function StudioPanel({ tab, onTab, expanded, onExpanded, tabs, footer }: {
   tab: StudioTab; onTab: (t: StudioTab) => void; expanded: boolean; onExpanded: (v: boolean) => void;
@@ -62,7 +62,7 @@ export function StudioPanel({ tab, onTab, expanded, onExpanded, tabs, footer }: 
         role="tabpanel"
         aria-labelledby={`studio-tab-${tab}`}
         data-lenis-prevent
-        className={cn("min-h-0 overflow-y-auto overscroll-contain p-4", expanded ? "max-h-[50dvh]" : "hidden", "md:block md:max-h-none md:flex-1")}
+        className={cn("min-h-0 overflow-y-auto overscroll-contain p-4", expanded ? "max-h-[40dvh]" : "hidden", "md:block md:max-h-none md:flex-1")}
       >
         {tabs.find((t) => t.id === tab)?.content}
       </div>

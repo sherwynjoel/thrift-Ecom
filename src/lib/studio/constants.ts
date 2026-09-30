@@ -2,7 +2,7 @@
 export const CANVAS_WIDTH = 800;
 export const CANVAS_HEIGHT = 1000;
 /** Print area in canvas units: 240 × 320 units = 12 × 16 in at 20 units per inch. Same position on front and back. */
-export const PRINT_AREA = { left: 280, top: 250, width: 240, height: 320 } as const;
+export const PRINT_AREA = { left: 280, top: 320, width: 240, height: 320 } as const;
 export const PRINT_AREA_INCHES = { width: 12, height: 16 } as const;
 export const UNITS_PER_INCH = PRINT_AREA.width / PRINT_AREA_INCHES.width;
 /** 3600 × 4800 = 300 DPI. 3072 × 4096 (256 DPI) is the fallback for browsers that cannot allocate a 17-megapixel canvas (iOS Safari). */
