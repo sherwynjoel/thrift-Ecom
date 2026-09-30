@@ -57,6 +57,21 @@ describe("low-stock", () => {
     expect(await runLowStock()).toEqual({ reset: 0, alerted: 1 });
   });
 
+  it("sends exactly one digest when two runs overlap, and releases the claim when sending fails", async () => {
+    await settings({ adminNotifyEmail: "owner@example.test" });
+    const p = await createProduct({ variants: [{ size: "S", colorName: "Black", stock: 1 }, { size: "M", colorName: "Black", stock: 0 }] });
+    vi.spyOn(outbox(), "send").mockRejectedValueOnce(new Error("smtp down"));
+    expect(await runLowStock()).toEqual({ reset: 0, alerted: 0, skipped: "failed" });
+    const stamps = await db.productVariant.findMany({ where: { productId: p.id }, select: { lowStockAlertedAt: true } });
+    expect(stamps.every((v) => v.lowStockAlertedAt === null)).toBe(true);
+    vi.restoreAllMocks();
+
+    const runs = await Promise.all([runLowStock(), runLowStock(), runLowStock()]);
+    expect(runs.map((r) => r.alerted).sort()).toEqual([0, 0, 2]);
+    expect(outbox().sent).toHaveLength(1);
+    expect(outbox().sent[0].subject).toBe("Low stock: 2 variants at or below 5");
+  });
+
   it("does not stamp anything without an admin email", async () => {
     await settings({ adminNotifyEmail: null });
     const p = await createProduct({ variants: [{ size: "S", colorName: "Black", stock: 1 }] });

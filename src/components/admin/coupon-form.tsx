@@ -141,7 +141,7 @@ export function CouponForm({ coupon }: { coupon: CouponRow | null }) {
           <input id="cp-ends" type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} className="mt-1 h-11 w-full min-w-0 rounded-md border border-border bg-bg px-3 text-sm" />
           <FieldError errors={errors.endsAt} />
         </div>
-        <p className="-mt-2 text-xs text-text-muted sm:col-span-2">Leave both blank to run it until you switch it off.</p>
+        <p className="-mt-2 text-xs text-text-muted sm:col-span-2">Leave both blank to run it until you switch it off. Times are in your device&apos;s time zone; lists show IST.</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

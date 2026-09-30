@@ -448,13 +448,14 @@ class ReReserveFailed extends Error {}
  * webhook retry) can't both write an ATTENTION event. Returns whether this call was the one that
  * flagged it.
  */
-async function flagAttentionOnce(orderId: string, message: string): Promise<boolean> {
-  return db.$transaction(async (tx) => {
+async function flagAttentionOnce(orderId: string, message: string, inTx?: Tx): Promise<boolean> {
+  const run = async (tx: Tx) => {
     const u = await tx.order.updateMany({ where: { id: orderId, needsAttention: false }, data: { needsAttention: true } });
     if (u.count !== 1) return false;
     await addOrderEvent(tx, orderId, "ATTENTION", message);
     return true;
-  });
+  };
+  return inTx ? run(inTx) : db.$transaction(run);
 }
 
 /**
@@ -498,6 +499,29 @@ async function recordAttentionPayment(orderId: string, paymentId: string, status
   }
 }
 
+/**
+ * A second, different payment was captured for an order that is already paid (PAID..DELIVERED). Flags
+ * the order via flagAttentionOnce; if it was already flagged for something else, writes a NOTE
+ * instead. Either way at most one event per payment id (webhook retries and reconcile runs repeat).
+ * Never touches providerPaymentId, status or stock.
+ */
+async function recordSecondPayment(orderId: string, paymentId: string, provider: string): Promise<void> {
+  const where = provider === "razorpay" ? "Razorpay" : "the payment dashboard";
+  const message = `Second payment ${paymentId} captured — refund it in ${where}`;
+  await db.$transaction(async (tx) => {
+    // The order row lock serializes concurrent redeliveries of the same payment, so the "already
+    // recorded?" check and the write can't interleave (one event per payment id).
+    await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+    const seen = await tx.orderEvent.findFirst({
+      where: { orderId, type: { in: ["ATTENTION", "NOTE"] }, message: { contains: `Second payment ${paymentId} ` } },
+      select: { id: true },
+    });
+    if (seen) return;
+    if (await flagAttentionOnce(orderId, message, tx)) return;
+    await addOrderEvent(tx, orderId, "NOTE", message);
+  });
+}
+
 async function afterPaid(orderId: string, userId: string, items: { variantId: string | null }[]): Promise<void> {
   const variantIds = items.map((i) => i.variantId).filter((v): v is string => v !== null);
   try {
@@ -518,7 +542,16 @@ export async function markOrderPaid(
   const order = await db.order.findUnique({ where: { id: orderId }, include: { items: true } });
   if (!order) throw new NotFoundError("Order");
   const number = order.number;
-  if (isPaidStatus(order.status) || order.status === "REFUNDED") return { outcome: "already_paid", number };
+  if (isPaidStatus(order.status)) {
+    // Same payment again (client + webhook, retries, reconcile): idempotent. A *different* captured
+    // payment on an order that is already paid means the customer was charged twice.
+    if (order.providerPaymentId && order.providerPaymentId !== paymentId) {
+      await recordSecondPayment(order.id, paymentId, order.paymentProvider);
+      return { outcome: "attention", number };
+    }
+    return { outcome: "already_paid", number };
+  }
+  if (order.status === "REFUNDED") return { outcome: "already_paid", number };
 
   // `null` = the source reported a payment but no amount (never trusted as a match).
   if (opts.amountPaise !== undefined && opts.amountPaise !== order.totalPaise) {

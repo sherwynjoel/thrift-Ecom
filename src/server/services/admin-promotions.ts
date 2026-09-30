@@ -18,6 +18,8 @@ export interface OfferRow {
 
 const paid = { in: [...PAID_STATUSES] };
 const CODE_TAKEN = "A coupon with this code already exists";
+const CODE_PENDING = "This code is on orders awaiting payment. Deactivate it instead, or try again after they expire.";
+const LABEL_TAKEN = "Another offer already uses this name";
 
 function parseCoupon(input: unknown) {
   const r = couponInputSchema.safeParse(input);
@@ -44,6 +46,23 @@ const toCouponRow = (r: Coupon, uses: number): CouponRow => ({
   id: r.id, code: r.code, type: r.type, value: r.value, minSubtotalPaise: r.minSubtotalPaise, maxDiscountPaise: r.maxDiscountPaise,
   startsAt: r.startsAt, endsAt: r.endsAt, usageLimit: r.usageLimit, perUserLimit: r.perUserLimit, active: r.active, uses, createdAt: r.createdAt,
 });
+
+/**
+ * Locks the coupon row (the same lock placeOrder's lockCoupon takes) and counts the orders that hold
+ * its code: paid-through-delivered, and unexpired orders awaiting payment (the ones checkout's
+ * checkCouponUsage counts against limits). While the lock is held no checkout can attach the code to
+ * a new order, so a rename/delete decided here can't strand an order that is being placed right now.
+ */
+async function lockCouponHolders(tx: Prisma.TransactionClient, id: string): Promise<{ code: string; paidUses: number; pending: number }> {
+  const rows = await tx.$queryRaw<{ code: string }[]>`SELECT code FROM "Coupon" WHERE id = ${id} FOR UPDATE`;
+  if (!rows[0]) throw new NotFoundError("Coupon");
+  const { code } = rows[0];
+  const [paidUses, pending] = await Promise.all([
+    tx.order.count({ where: { couponCode: code, status: paid } }),
+    tx.order.count({ where: { couponCode: code, status: "PENDING_PAYMENT", expiresAt: { gt: new Date() } } }),
+  ]);
+  return { code, paidUses, pending };
+}
 
 export async function listCoupons(): Promise<CouponRow[]> {
   const rows = await db.coupon.findMany({ orderBy: [{ active: "desc" }, { createdAt: "desc" }] });
@@ -74,16 +93,20 @@ export async function createCoupon(input: unknown): Promise<CouponRow> {
 
 export async function updateCoupon(id: string, input: unknown): Promise<CouponRow> {
   const data = parseCoupon(input);
-  const current = await getCoupon(id);
-  if (data.code !== current.code) {
-    if (current.uses > 0) {
-      const msg = "This code has been used, so it cannot be renamed. Create a new code instead.";
-      throw new ConflictError(msg, { code: [msg] });
-    }
-    if (await db.coupon.findUnique({ where: { code: data.code }, select: { id: true } })) throw new ConflictError(CODE_TAKEN, { code: [CODE_TAKEN] });
-  }
   try {
-    return toCouponRow(await db.coupon.update({ where: { id }, data }), current.uses);
+    return await db.$transaction(async (tx) => {
+      const held = await lockCouponHolders(tx, id);
+      if (data.code !== held.code) {
+        if (held.paidUses > 0) {
+          const msg = "This code has been used, so it cannot be renamed. Create a new code instead.";
+          throw new ConflictError(msg, { code: [msg] });
+        }
+        if (held.pending > 0) throw new ConflictError(CODE_PENDING, { code: [CODE_PENDING] });
+        if (await tx.coupon.findUnique({ where: { code: data.code }, select: { id: true } })) throw new ConflictError(CODE_TAKEN, { code: [CODE_TAKEN] });
+      }
+      // Displayed uses stay paid-only.
+      return toCouponRow(await tx.coupon.update({ where: { id }, data }), held.paidUses);
+    });
   } catch (err) {
     if (isUniqueViolation(err)) throw new ConflictError(CODE_TAKEN, { code: [CODE_TAKEN] });
     throw err;
@@ -91,9 +114,12 @@ export async function updateCoupon(id: string, input: unknown): Promise<CouponRo
 }
 
 export async function deleteCoupon(id: string): Promise<void> {
-  const current = await getCoupon(id);
-  if (current.uses > 0) throw new ConflictError("This code has been used. Deactivate it instead of deleting it.");
-  await db.coupon.delete({ where: { id } });
+  await db.$transaction(async (tx) => {
+    const held = await lockCouponHolders(tx, id);
+    if (held.paidUses > 0) throw new ConflictError("This code has been used. Deactivate it instead of deleting it.");
+    if (held.pending > 0) throw new ConflictError(CODE_PENDING);
+    await tx.coupon.delete({ where: { id } });
+  });
 }
 
 async function offerRows(where: Prisma.OfferWhereInput = {}): Promise<OfferRow[]> {
@@ -123,8 +149,18 @@ export async function getOffer(id: string): Promise<OfferRow> {
   return row;
 }
 
+/** Offer names identify offers in reporting (orders snapshot the label), so they are unique, case-insensitively. */
+async function assertLabelFree(label: string, exceptId?: string): Promise<void> {
+  const clash = await db.offer.findFirst({
+    where: { label: { equals: label, mode: "insensitive" }, ...(exceptId ? { id: { not: exceptId } } : {}) },
+    select: { id: true },
+  });
+  if (clash) throw new ValidationError({ label: [LABEL_TAKEN] });
+}
+
 export async function createOffer(input: unknown): Promise<OfferRow> {
   const data = parseOffer(input);
+  await assertLabelFree(data.label);
   await assertCollection(data.collectionId);
   const r = await db.offer.create({ data });
   return getOffer(r.id);
@@ -132,7 +168,15 @@ export async function createOffer(input: unknown): Promise<OfferRow> {
 
 export async function updateOffer(id: string, input: unknown): Promise<OfferRow> {
   const data = parseOffer(input);
-  await getOffer(id);
+  const current = await getOffer(id);
+  if (data.label !== current.label) {
+    // Uses are counted by the label orders recorded, so renaming a used offer would orphan them.
+    if (current.uses > 0) {
+      const msg = "This offer has been used, so its name is locked. Create a new offer instead.";
+      throw new ConflictError(msg, { label: [msg] });
+    }
+    await assertLabelFree(data.label, id);
+  }
   await assertCollection(data.collectionId);
   await db.offer.update({ where: { id }, data });
   return getOffer(id);

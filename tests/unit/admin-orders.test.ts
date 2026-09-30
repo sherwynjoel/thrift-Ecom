@@ -253,6 +253,34 @@ describe("admin order actions", () => {
     expect(await stockOf(a.variantId)).toBe(4);
   });
 
+  it("flags the order with the refund id when an already-existing refund is found but the order update fails (N1)", async () => {
+    const a = await paidOrder(1);
+    const provider = getPaymentProvider();
+    const [origRefund, origFetch] = [provider.refund, provider.fetchRefunds];
+    const origTimeout = refundTxOptions.timeout;
+    refundTxOptions.timeout = 300;
+    provider.refund = async () => {
+      throw new Error("must not be called");
+    };
+    // The provider already holds a full refund, but the lookup is slow enough that the transaction times out.
+    provider.fetchRefunds = async () => {
+      await new Promise((r) => setTimeout(r, 900));
+      return [{ id: "rfnd_existing", amountPaise: 1_000_000, status: "processed" as const }];
+    };
+    try {
+      await expect(refundOrder(a.orderId, null)).rejects.toThrow(/rfnd_existing already exists with the provider but the order could not be updated/);
+    } finally {
+      provider.refund = origRefund;
+      provider.fetchRefunds = origFetch;
+      refundTxOptions.timeout = origTimeout;
+    }
+    const o = await db.order.findUniqueOrThrow({ where: { id: a.orderId }, include: { events: true } });
+    expect(o).toMatchObject({ status: "PAID", needsAttention: true });
+    expect(o.events.some((e) => e.type === "ATTENTION" && e.message.includes("rfnd_existing"))).toBe(true);
+    expect(o.events.some((e) => e.type === "REFUNDED")).toBe(false);
+    expect(await stockOf(a.variantId)).toBe(4);
+  });
+
   it("marks refunded manually with a required note, restocking only unshipped orders and never calling the provider", async () => {
     const provider = getPaymentProvider();
     const origRefund = provider.refund;

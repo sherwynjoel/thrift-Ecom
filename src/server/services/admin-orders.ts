@@ -255,15 +255,18 @@ const providerLabel = (p: string) => (p === "razorpay" ? "Razorpay" : p === "moc
  * Idempotent across provider timeouts: before creating a refund it asks the provider for refunds
  * that already exist for the payment; if those (pending or processed) cover the order total, the
  * order is finalised with that refund id and no new refund is created. Any provider failure leaves
- * the order untouched and flags it for attention (outside the rolled-back transaction). If a refund
- * was created but the order update then fails, the order is flagged with the refund id.
+ * the order untouched and flags it for attention (outside the rolled-back transaction). If the
+ * provider holds a refund for the order (one just created, or one that already existed) but the order
+ * update then fails, the order is flagged with that refund id.
  *
  * Stock goes back only for unshipped orders, via restockOrderItems (after the order row lock,
  * variants sorted by id, exactly-once through Order.stockReserved).
  */
 export async function refundOrder(id: string, actorId: string | null): Promise<{ refundId: string | null }> {
   const currentProvider = configuredProvider();
-  let createdRefundId: string | null = null;
+  // Set as soon as the provider is known to hold a refund for this order, whichever branch found it:
+  // from then on money has moved, so a failed order update must never be silent.
+  let refundIdForFailure: { id: string; created: boolean } | null = null;
   try {
     const refundId = await db.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<RefundRow[]>`
@@ -283,10 +286,11 @@ export async function refundOrder(id: string, actorId: string | null): Promise<{
           const covered = existing.reduce((sum, r) => sum + r.amountPaise, 0);
           if (existing.length > 0 && covered >= o.totalPaise) {
             finalId = existing[existing.length - 1].id;
+            refundIdForFailure = { id: finalId, created: false };
             note = `Refund ${finalId} already existed with ${providerLabel(o.paymentProvider)}; recorded it (no new refund created)`;
           } else {
-            createdRefundId = (await provider.refund(o.providerPaymentId, o.totalPaise)).id;
-            finalId = createdRefundId;
+            finalId = (await provider.refund(o.providerPaymentId, o.totalPaise)).id;
+            refundIdForFailure = { id: finalId, created: true };
             note = `Refund ${finalId} created with ${providerLabel(o.paymentProvider)}`;
           }
         } catch (err) {
@@ -303,11 +307,14 @@ export async function refundOrder(id: string, actorId: string | null): Promise<{
     await notifyOrder(id, "refunded");
     return { refundId };
   } catch (err) {
-    if (createdRefundId) {
-      // Money moved but the order could not be updated: make sure the owner sees it.
+    if (refundIdForFailure) {
+      // Money moved but the order could not be updated: make sure the owner sees it. Written on every
+      // such failure (not only the first flag), so a retry that fails again still leaves a fresh signal.
+      const { id: refundId, created } = refundIdForFailure;
+      const what = created ? `Refund ${refundId} was created` : `Refund ${refundId} already exists with the provider`;
       await db.order.updateMany({ where: { id }, data: { needsAttention: true } }).catch(() => undefined);
-      await addOrderEvent(db, id, "ATTENTION", `Refund ${createdRefundId} was created but the order could not be updated. Refund again to record it (no second refund is made).`, actorId).catch(() => undefined);
-      throw new ConflictError(`Refund ${createdRefundId} was created but the order could not be updated. Reload and refund again to record it.`);
+      await addOrderEvent(db, id, "ATTENTION", `${what} but the order could not be updated. Refund again to record it (no second refund is made).`, actorId).catch(() => undefined);
+      throw new ConflictError(`${what} but the order could not be updated. Reload and refund again to record it.`);
     }
     if (err instanceof ProviderRefundFailed) {
       await flagAttentionOnce(

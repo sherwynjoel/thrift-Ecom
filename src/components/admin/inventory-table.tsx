@@ -117,7 +117,11 @@ export function InventoryTable({ rows, threshold }: { rows: InventoryRow[]; thre
         <span>Product</span><span>Variant</span><span>SKU</span><span className="text-right">Stock</span>
       </div>
       <ul data-testid="inventory-table">
-        {/* Keyed by stock too, so a refresh with a changed server value remounts the row from fresh data. */}
+        {/* Keyed by stock too, so fresh server data remounts a row whose stock changed. Note that every
+            successful save already refreshes this page: setStockAction calls revalidatePath, and Next
+            sends the route's new RSC payload back with the action result. So the saved row remounts,
+            and on the Low filter a row raised above the threshold drops out of the list right away.
+            Other rows keep their keys, so focus and in-progress edits elsewhere are kept. */}
         {rows.map((r) => <StockRow key={`${r.variantId}:${r.stock}`} row={r} threshold={threshold} />)}
       </ul>
     </div>

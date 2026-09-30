@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { INDIA_STATES } from "@/lib/india-states";
+import { GST_STATE_CODES, INDIA_STATES } from "@/lib/india-states";
 import { blankToNull, phoneSchema } from "@/lib/validation/common";
 
 const GSTIN = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
@@ -20,6 +20,18 @@ export const settingsInputSchema = z.object({
   whatsappNumber: z.preprocess(blankToNull, phoneSchema.nullable()),
   dailySummaryEnabled: z.boolean(),
   abandonedCartEnabled: z.boolean(),
+}).superRefine((v, ctx) => {
+  if (v.gstRateLowPct > v.gstRateHighPct) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["gstRateLowPct"], message: "The lower-slab rate can't be higher than the rate above the threshold" });
+  }
+  // A GSTIN starts with the GST code of the state it is registered in; it must match the seller state printed on invoices.
+  if (v.gstin) {
+    if (!v.sellerState) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["sellerState"], message: "Choose the state your GSTIN is registered in" });
+    } else if (v.gstin.slice(0, 2) !== GST_STATE_CODES[v.sellerState]) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["gstin"], message: `This GSTIN isn't registered in ${v.sellerState} (it should start with ${GST_STATE_CODES[v.sellerState]})` });
+    }
+  }
 });
 
 export type SettingsInput = z.input<typeof settingsInputSchema>;

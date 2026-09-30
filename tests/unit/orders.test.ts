@@ -586,6 +586,34 @@ describe("markOrderPaid", () => {
     expect((await db.order.findUniqueOrThrow({ where: { id: p.orderId } })).status).toBe("CANCELLED");
   });
 
+  it("flags a second, different captured payment on an already-paid order once per payment id", async () => {
+    const { user, variant, address } = await buyer({ qty: 2 });
+    const p = await placeOrder(user.id, { addressId: address.id });
+    expect((await markOrderPaid(p.orderId, "pay_1", "client")).outcome).toBe("paid");
+    // Same id again stays idempotent and silent.
+    expect((await markOrderPaid(p.orderId, "pay_1", "webhook")).outcome).toBe("already_paid");
+    // A different captured payment (webhook and reconcile racing, plus a retry) → flagged once.
+    const outcomes = await Promise.all([
+      markOrderPaid(p.orderId, "pay_2", "webhook"),
+      markOrderPaid(p.orderId, "pay_2", "reconcile"),
+    ]);
+    expect(outcomes.map((o) => o.outcome)).toEqual(["attention", "attention"]);
+    await markOrderPaid(p.orderId, "pay_2", "webhook");
+    let o = await db.order.findUniqueOrThrow({ where: { id: p.orderId }, include: { events: true } });
+    expect(o).toMatchObject({ status: "PAID", providerPaymentId: "pay_1", needsAttention: true });
+    expect(o.events.filter((e) => e.message.includes("pay_2"))).toHaveLength(1);
+    expect(o.events.find((e) => e.message.includes("pay_2"))).toMatchObject({ type: "ATTENTION", message: "Second payment pay_2 captured — refund it in the payment dashboard" });
+    // Still flagged: a third payment is noted (not a second ATTENTION), once, even after shipping.
+    await db.order.update({ where: { id: p.orderId }, data: { status: "SHIPPED" } });
+    await Promise.all([markOrderPaid(p.orderId, "pay_3", "webhook"), markOrderPaid(p.orderId, "pay_3", "webhook")]);
+    o = await db.order.findUniqueOrThrow({ where: { id: p.orderId }, include: { events: true } });
+    expect(o.events.filter((e) => e.message.includes("pay_3")).map((e) => e.type)).toEqual(["NOTE"]);
+    expect(o.events.filter((e) => e.type === "ATTENTION")).toHaveLength(1);
+    expect(o.events.filter((e) => e.type === "PAID")).toHaveLength(1);
+    expect(o.status).toBe("SHIPPED");
+    expect(await stockOf(variant.id)).toBe(3);
+  });
+
   it("resolves a concurrent client+webhook payment to exactly one PAID transition", async () => {
     const { user, variant, address } = await buyer({ qty: 2 });
     const p = await placeOrder(user.id, { addressId: address.id });

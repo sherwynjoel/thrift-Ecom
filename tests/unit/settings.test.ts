@@ -54,4 +54,18 @@ describe("settings service", () => {
     await expect(updateSettings({ ...valid, gstRateHighPct: 40 })).rejects.toBeInstanceOf(ValidationError);
     await expect(updateSettings({ ...valid, whatsappNumber: "12345" })).rejects.toBeInstanceOf(ValidationError);
   });
+
+  it("keeps the lower GST slab at or below the higher one and matches the GSTIN to the seller state", async () => {
+    const fields = async (input: Record<string, unknown>) => {
+      const err = await updateSettings(input).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ValidationError);
+      return (err as ValidationError).details as Record<string, string[]>;
+    };
+    expect(Object.keys(await fields({ ...valid, gstRateLowPct: 18, gstRateHighPct: 12 }))).toEqual(["gstRateLowPct"]);
+    expect(Object.keys(await fields({ ...valid, gstin: "29ABCDE1234F1Z5" }))).toEqual(["gstin"]);
+    expect(Object.keys(await fields({ ...valid, sellerState: "" }))).toEqual(["sellerState"]);
+    await expect(updateSettings({ ...valid, gstRateLowPct: 12, gstRateHighPct: 12 })).resolves.toMatchObject({ gstRateLowPct: 12 });
+    await expect(updateSettings({ ...valid, sellerState: "Karnataka", gstin: "29abcde1234f1z5" })).resolves.toMatchObject({ gstin: "29ABCDE1234F1Z5" });
+    await expect(updateSettings({ ...valid, sellerState: "", gstin: "" })).resolves.toMatchObject({ gstin: null, sellerState: "" });
+  });
 });

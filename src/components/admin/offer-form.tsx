@@ -34,6 +34,7 @@ export function OfferForm({ offer, collections }: { offer: OfferRow | null; coll
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [pending, start] = useTransition();
   const router = useRouter();
+  const labelLocked = Boolean(offer && offer.uses > 0);
 
   useEffect(() => {
     setStartsAt(toDateTimeLocal(offer?.startsAt ?? null));
@@ -87,7 +88,17 @@ export function OfferForm({ offer, collections }: { offer: OfferRow | null; coll
     <form onSubmit={(e) => { e.preventDefault(); save(); }} className="max-w-2xl space-y-5 rounded-md border border-border bg-surface p-4 sm:p-5" data-testid="offer-form" noValidate>
       <div>
         <Label htmlFor="of-label">Name shown to customers</Label>
-        <Input id="of-label" value={label} onChange={(e) => setLabel(e.target.value)} maxLength={60} placeholder="Any 3 for ₹999" className={FIELD} />
+        <Input
+          id="of-label"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          readOnly={labelLocked}
+          maxLength={60}
+          placeholder="Any 3 for ₹999"
+          className={`${FIELD} ${labelLocked ? "opacity-70" : ""}`}
+          aria-describedby={labelLocked ? "of-label-hint" : undefined}
+        />
+        {labelLocked && <p id="of-label-hint" className="mt-1 text-xs text-text-muted">Used {offer!.uses} {offer!.uses === 1 ? "time" : "times"}, so the name is locked.</p>}
         <FieldError errors={errors.label} />
       </div>
 
@@ -140,7 +151,7 @@ export function OfferForm({ offer, collections }: { offer: OfferRow | null; coll
           <input id="of-ends" type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} className={NATIVE} />
           <FieldError errors={errors.endsAt} />
         </div>
-        <p className="-mt-2 text-xs text-text-muted sm:col-span-2">Leave both blank to run it until you switch it off.</p>
+        <p className="-mt-2 text-xs text-text-muted sm:col-span-2">Leave both blank to run it until you switch it off. Times are in your device&apos;s time zone; lists show IST.</p>
       </div>
 
       <label className="flex min-h-11 items-center gap-3 text-sm">

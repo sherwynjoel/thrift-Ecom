@@ -29,6 +29,7 @@ export const couponInputSchema = z
   .superRefine((v, ctx) => {
     if (v.type === "PERCENT" && (v.value < 1 || v.value > 90)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["value"], message: "Percent must be between 1 and 90" });
     if (v.type === "FLAT" && v.value < 100) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["value"], message: "Flat discount must be at least ₹1" });
+    if (v.type === "FLAT" && v.value > 10_000_000) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["value"], message: "Flat discount must be ₹1,00,000 or less" });
     if (v.startsAt && v.endsAt && v.endsAt <= v.startsAt) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["endsAt"], message: "End must be after start" });
   });
 export type CouponInput = z.input<typeof couponInputSchema>;
