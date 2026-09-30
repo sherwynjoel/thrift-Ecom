@@ -1,10 +1,14 @@
 "use client";
 
+import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useCartUI } from "./cart-ui";
 
 export function CartDrawer({ itemCount, children }: { itemCount: number; children: React.ReactNode }) {
   const { open, setOpen } = useCartUI();
+  const pathname = usePathname();
+  useEffect(() => setOpen(false), [pathname, setOpen]);
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetContent side="right" className="flex w-full flex-col bg-bg sm:max-w-md" data-testid="cart-drawer">

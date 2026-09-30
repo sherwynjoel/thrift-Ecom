@@ -5,6 +5,7 @@ import { ProductAccordions } from "@/components/storefront/product-accordions";
 import { ProductPurchase } from "@/components/storefront/product-purchase";
 import { RelatedProducts } from "@/components/storefront/related-products";
 import { BRAND } from "@/config/brand";
+import { jsonLdScript } from "@/lib/json-ld";
 import { readPage } from "@/server/content";
 import { NotFoundError } from "@/server/errors";
 import { getProductBySlug, getRelatedProducts } from "@/server/services/catalog";
@@ -55,7 +56,7 @@ export default async function ProductPage({ params }: Props) {
       <ProductPurchase product={product} />
       <ProductAccordions product={product} shipping={shipping?.body ?? ""} returns={returns?.body ?? ""} />
       <RelatedProducts products={related} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
     </div>
   );
 }

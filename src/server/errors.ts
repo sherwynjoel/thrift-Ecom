@@ -35,8 +35,8 @@ export class UnauthorizedError extends DomainError {
 }
 
 export class ConflictError extends DomainError {
-  constructor(message: string) {
-    super("CONFLICT", message, 409);
+  constructor(message: string, fieldErrors?: Record<string, string[]>) {
+    super("CONFLICT", message, 409, fieldErrors);
   }
 }
 
@@ -49,6 +49,32 @@ export class ValidationError extends DomainError {
 export class RateLimitedError extends DomainError {
   constructor(public readonly retryAfterSec: number) {
     super("RATE_LIMITED", "Too many attempts, try again shortly", 429, { retryAfterSec });
+  }
+}
+
+export class PaymentError extends DomainError {
+  constructor(message = "The payment could not be processed. Please try again.") {
+    super("PAYMENT_ERROR", message, 502);
+  }
+}
+
+export class LengthRequiredError extends DomainError {
+  constructor() {
+    super("LENGTH_REQUIRED", "Upload size unknown. Please try again.", 411);
+  }
+}
+
+export class PayloadTooLargeError extends DomainError {
+  constructor(message = "This upload is too large") {
+    super("PAYLOAD_TOO_LARGE", message, 413);
+  }
+}
+
+export interface StockIssue { variantId: string; name: string; requested: number; available: number }
+
+export class StockChangedError extends DomainError {
+  constructor(public readonly issues: StockIssue[]) {
+    super("STOCK_CHANGED", "Some items just sold out or ran low, so we updated your bag. Please review it and try again.", 409, { issues });
   }
 }
 

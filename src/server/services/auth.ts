@@ -3,6 +3,9 @@ import { randomBytes } from "node:crypto";
 import { db } from "@/server/db";
 import { ConflictError, NotFoundError, UnauthorizedError, ValidationError } from "@/server/errors";
 import { registerSchema, updateProfileSchema, changePasswordSchema, passwordSchema } from "@/lib/validation/auth";
+import { getEmail } from "@/server/adapters/email";
+import { BRAND } from "@/config/brand";
+import { escapeHtml } from "@/lib/escape-html";
 
 export interface PublicUser {
   id: string;
@@ -72,11 +75,29 @@ export async function resetPassword(token: string, newPassword: string): Promise
   ]);
 }
 
+export async function requestPasswordReset(email: string): Promise<void> {
+  const issued = await createPasswordResetToken(email);
+  if (!issued) return;
+  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const link = `${origin}/reset-password?token=${issued.token}`;
+  await getEmail().send({
+    to: issued.user.email,
+    subject: `Reset your ${BRAND.name} password`,
+    text: `Reset your password: ${link}\nThis link works once and expires in one hour.`,
+    html: `<p>Hi ${escapeHtml(issued.user.name ?? "there")},</p><p><a href="${link}">Reset your password</a></p><p>This link works once and expires in one hour. If you did not ask for this, ignore this email.</p>`,
+  });
+}
+
 export async function updateProfile(userId: string, input: { name: string }): Promise<PublicUser> {
   const parsed = updateProfileSchema.safeParse(input);
   if (!parsed.success) throw new ValidationError(fieldErrors(parsed.error));
   const user = await db.user.update({ where: { id: userId }, data: { name: parsed.data.name } });
   return toPublic(user);
+}
+
+export async function userHasPassword(id: string): Promise<boolean> {
+  const row = await db.user.findUnique({ where: { id }, select: { passwordHash: true } });
+  return Boolean(row?.passwordHash);
 }
 
 export async function changePassword(userId: string, current: string, next: string): Promise<void> {

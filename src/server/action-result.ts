@@ -1,5 +1,5 @@
 import type { ZodError } from "zod";
-import { DomainError, ValidationError } from "@/server/errors";
+import { ConflictError, DomainError, ValidationError } from "@/server/errors";
 
 export type ActionResult<T = null> =
   | { ok: true; data: T }
@@ -17,6 +17,11 @@ export function zodFieldErrors(error: ZodError): Record<string, string[]> {
 export function actionError(err: unknown): ActionResult<never> {
   if (err instanceof ValidationError) {
     return { ok: false, message: err.message, fieldErrors: (err.details as Record<string, string[]>) ?? {} };
+  }
+  // A ConflictError may carry field-level details (e.g. a slug taken by a concurrent save); surface them
+  // the same way a ValidationError does so the form can highlight the right input.
+  if (err instanceof ConflictError && err.details) {
+    return { ok: false, message: err.message, fieldErrors: err.details as Record<string, string[]> };
   }
   if (err instanceof DomainError) return { ok: false, message: err.message };
   console.error("[action]", err);

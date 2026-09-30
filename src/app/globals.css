@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ---- Brand tokens (spec section 4) ---- */
 :root {
   --bg: #0A0A0A;
@@ -14,6 +16,23 @@
   --danger: #FF4D4D;
   --radius: 2px;
   --marquee-duration: 30s;
+
+  /* ---- Raw shadcn color aliases (components reference these var names directly, e.g. sonner.tsx, button.tsx) ---- */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--surface);
+  --card-foreground: var(--text);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--text);
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-ink);
+  --secondary: var(--surface-raised);
+  --secondary-foreground: var(--text);
+  --muted: var(--surface);
+  --muted-foreground: var(--text-muted);
+  --destructive: var(--danger);
+  --input: var(--border);
+  --ring: var(--accent);
 }
 
 /* ---- Tailwind theme: brand utilities + shadcn semantics on the same palette ---- */
@@ -80,6 +99,10 @@
   * { @apply border-border; }
   html { color-scheme: dark; scroll-behavior: auto; }
   body { @apply bg-bg text-text font-sans antialiased; }
+  /* Pages with a fixed mobile action bar (checkout) reserve room for it so the footer is never covered. */
+  @media (width < 64rem) {
+    body:has([data-sticky-bar]) { padding-bottom: calc(7.5rem + env(safe-area-inset-bottom)); }
+  }
   h1, h2, h3, .display { @apply font-display uppercase tracking-tight; }
   ::selection { background: var(--accent); color: var(--accent-ink); }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -103,4 +126,12 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+@media print {
+  html, body { background: #fff !important; color: #000 !important; }
+  .print-page { break-after: page; }
+  /* Each document sits in its own wrapper, so :last-child would match every one: the final document carries an explicit class instead. */
+  .print-page-last { break-after: auto; }
+  .no-print { display: none !important; }
 }

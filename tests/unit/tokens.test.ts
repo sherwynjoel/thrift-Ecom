@@ -31,6 +31,15 @@ describe("design tokens", () => {
     expect(css).toMatch(/--font-sans:\s*var\(--font-grotesk\)/);
   });
 
+  it("defines raw shadcn color aliases in :root for components that reference them directly", () => {
+    expect(css).toMatch(/--popover:\s*var\(--surface-raised\)/);
+    expect(css).toMatch(/--secondary:\s*var\(--surface-raised\)/);
+  });
+
+  it("pins the dark variant to a .dark class instead of the OS color scheme", () => {
+    expect(css).toMatch(/@custom-variant dark \(&:where\(\.dark, \.dark \*\)\);/);
+  });
+
   it("honours reduced motion globally", () => {
     expect(css).toMatch(/prefers-reduced-motion:\s*reduce/);
   });

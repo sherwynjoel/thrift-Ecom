@@ -33,8 +33,12 @@ export function Footer() {
           </div>
         ))}
       </div>
-      <div className="border-t border-border py-6 text-center text-xs text-text-muted">
-        © {new Date().getFullYear()} {BRAND.name}. Made in India.
+      <div className="flex flex-col items-center justify-center gap-1 border-t border-border py-6 text-center text-xs text-text-muted sm:flex-row sm:gap-3">
+        <span>© {new Date().getFullYear()} {BRAND.name}. Made in India.</span>
+        <span className="hidden sm:inline" aria-hidden="true">·</span>
+        <a href={BRAND.poweredBy.url} target="_blank" rel="noreferrer" className="hover:text-text" data-testid="powered-by">
+          Powered by <span className="font-semibold text-brand">{BRAND.poweredBy.name}</span>
+        </a>
       </div>
     </footer>
   );

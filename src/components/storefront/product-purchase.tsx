@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { motion, useAnimate } from "motion/react";
 import { toast } from "sonner";
 import { Minus, Plus } from "lucide-react";
@@ -104,6 +105,12 @@ export function ProductPurchase({ product }: { product: ProductDetail }) {
             {product.soldOut ? "Sold out" : pending ? "Adding…" : "Add to bag"}
           </Button>
         </div>
+
+        {product.isCustomizable && (
+          <Button render={<Link href={`/customize/${product.slug}${color ? `?color=${encodeURIComponent(color)}` : ""}`} />} nativeButton={false} variant="secondary" className="h-11 w-full font-display text-lg tracking-wide" data-testid="customize-this">
+            Customize this
+          </Button>
+        )}
 
         <ul className="grid grid-cols-3 gap-2 text-center text-xs text-text-muted">
           <li className="rounded-sm border border-border p-2">Free delivery over {formatPaise(BRAND.freeShippingThresholdPaise)}</li>

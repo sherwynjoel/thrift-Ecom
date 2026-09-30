@@ -25,17 +25,21 @@ enum ProductStatus {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
+  id            String        @id @default(cuid())
+  email         String        @unique
   passwordHash  String?
   name          String?
   image         String?
-  role          Role      @default(CUSTOMER)
+  role          Role          @default(CUSTOMER)
   emailVerified DateTime?
   accounts      Account[]
   cart          Cart?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  addresses     Address[]
+  orders        Order[]
+  designs       Design[]
+  designAssets  DesignAsset[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 }
 
 model Account {
@@ -74,6 +78,7 @@ model Collection {
   isFeatured   Boolean             @default(false)
   isActive     Boolean             @default(true)
   products     ProductCollection[]
+  offers       Offer[]
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
 }
@@ -92,6 +97,8 @@ model Product {
   images              ProductImage[]
   variants            ProductVariant[]
   collections         ProductCollection[]
+  orderItems          OrderItem[]
+  designs             Design[]
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
 
@@ -124,19 +131,21 @@ model ProductImage {
 }
 
 model ProductVariant {
-  id         String     @id @default(cuid())
-  productId  String
-  sku        String     @unique
-  size       String
-  colorName  String
-  colorHex   String
-  pricePaise Int?
-  stock      Int        @default(0)
-  sortOrder  Int        @default(0)
-  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
-  cartItems  CartItem[]
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  id                String      @id @default(cuid())
+  productId         String
+  sku               String      @unique
+  size              String
+  colorName         String
+  colorHex          String
+  pricePaise        Int?
+  stock             Int         @default(0)
+  sortOrder         Int         @default(0)
+  lowStockAlertedAt DateTime?
+  product           Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems         CartItem[]
+  orderItems        OrderItem[]
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
   @@unique([productId, size, colorName])
 }
@@ -147,10 +156,12 @@ model Cart {
   guestToken String?    @unique
   user       User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
   items      CartItem[]
+  remindedAt DateTime?
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 }
 
+/// Partial unique index CartItem_cartId_variantId_plain_key (designId IS NULL) lives in migration phase3_design_studio; delete any DROP INDEX for it from future generated migrations.
 model CartItem {
   id        String         @id @default(cuid())
   cartId    String
@@ -158,8 +169,255 @@ model CartItem {
   quantity  Int
   cart      Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
   variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  designId  String?
+  design    Design?        @relation(fields: [designId], references: [id], onDelete: Cascade)
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 
-  @@unique([cartId, variantId])
+  @@unique([cartId, designId])
+  @@index([cartId, variantId])
+}
+
+model Design {
+  id              String        @id @default(cuid())
+  userId          String?
+  user            User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cartToken       String?
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  colorName       String
+  frontJson       Json?
+  backJson        Json?
+  frontPreviewKey String?
+  backPreviewKey  String?
+  frontPrintKey   String?
+  backPrintKey    String?
+  assetKeys       String[]      @default([])
+  rightsConfirmed Boolean       @default(false)
+  cartItems       CartItem[]
+  orderItems      OrderItem[]
+  assets          DesignAsset[]
+  createdAt       DateTime      @default(now())
+
+  @@index([userId])
+  @@index([cartToken])
+  @@index([createdAt])
+}
+
+/// An uploaded studio image. Owned by whoever uploaded it (user or guest cart token); designId is the newest design using it.
+/// Rows never used by a design are purged (with their file) after 24 h.
+model DesignAsset {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cartToken String?
+  designId  String?
+  design    Design?  @relation(fields: [designId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([cartToken])
+  @@index([designId, createdAt])
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  EXPIRED
+  REFUNDED
+}
+
+enum CouponType {
+  PERCENT
+  FLAT
+}
+
+enum OfferType {
+  BUNDLE_PRICE
+  QTY_PERCENT
+}
+
+// A partial unique index `Address_userId_default_key` ON ("userId") WHERE "isDefault" is applied by
+// migration 20260929214720_address_default_partial_unique as a database-level backstop for "at most
+// one default address per user". Prisma's schema DSL cannot express partial/filtered unique indexes,
+// so it is intentionally NOT declared here — do not let a future `prisma migrate dev` drop it as drift.
+model Address {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName  String
+  phone     String
+  line1     String
+  line2     String?
+  landmark  String?
+  city      String
+  state     String
+  pincode   String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Order {
+  id                String       @id @default(cuid())
+  number            String       @unique
+  userId            String
+  user              User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  email             String
+  status            OrderStatus  @default(PENDING_PAYMENT)
+  needsAttention    Boolean      @default(false)
+  // True while this order's items are actually decremented from stock. Flipped to false by
+  // restockOrderItems (via releaseOrder on cancel/expire) so a later release never restocks twice,
+  // and by the "paid after expiry, could not re-reserve" path in markOrderPaid so a PAID order that
+  // never actually re-took its stock cannot later fabricate phantom stock on cancel/refund.
+  stockReserved     Boolean      @default(true)
+  shipName          String
+  shipPhone         String
+  shipLine1         String
+  shipLine2         String?
+  shipLandmark      String?
+  shipCity          String
+  shipState         String
+  shipPincode       String
+  subtotalPaise     Int
+  discountPaise     Int          @default(0)
+  shippingPaise     Int          @default(0)
+  totalPaise        Int
+  couponCode        String?
+  offerLabel        String?
+  paymentProvider   String
+  providerOrderId   String?      @unique
+  providerPaymentId String?
+  paidAt            DateTime?
+  processingAt      DateTime?
+  shippedAt         DateTime?
+  deliveredAt       DateTime?
+  cancelledAt       DateTime?
+  refundedAt        DateTime?
+  carrier           String?
+  trackingNumber    String?
+  trackingUrl       String?
+  adminNote         String?
+  customerNote      String?
+  // Seller and GST inputs frozen when the order became PAID (markOrderPaid), so an issued invoice never
+  // changes when store settings change later. Null for orders paid before this existed (render from settings).
+  invoiceSnapshot   Json?
+  expiresAt         DateTime
+  items             OrderItem[]
+  events            OrderEvent[]
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@index([couponCode])
+  @@index([paidAt])
+  @@index([needsAttention])
+}
+
+model OrderItem {
+  id                    String          @id @default(cuid())
+  orderId               String
+  order                 Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId             String?
+  product               Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId             String?
+  variant               ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  productName           String
+  productSlug           String
+  size                  String
+  colorName             String
+  imageUrl              String?
+  sku                   String
+  unitPricePaise        Int
+  quantity              Int
+  lineTotalPaise        Int
+  designId              String?
+  design                Design?         @relation(fields: [designId], references: [id], onDelete: SetNull)
+  designFrontPreviewUrl String?
+  designBackPreviewUrl  String?
+  printFrontUrl         String?
+  printBackUrl          String?
+  printedAt             DateTime?
+  heldAt                DateTime?
+  holdNote              String?
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([designId])
+  @@index([printedAt])
+}
+
+model OrderEvent {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  type      String
+  message   String
+  actorId   String?
+  createdAt DateTime @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+model Coupon {
+  id               String     @id @default(cuid())
+  code             String     @unique
+  type             CouponType
+  value            Int
+  minSubtotalPaise Int        @default(0)
+  maxDiscountPaise Int?
+  startsAt         DateTime?
+  endsAt           DateTime?
+  usageLimit       Int?
+  perUserLimit     Int?
+  active           Boolean    @default(true)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+}
+
+model Offer {
+  id            String      @id @default(cuid())
+  label         String
+  type          OfferType
+  minQty        Int
+  pricePaise    Int?
+  percent       Int?
+  collectionId  String?
+  collection    Collection? @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  active        Boolean     @default(true)
+  startsAt      DateTime?
+  endsAt        DateTime?
+  includeCustom Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model StoreSetting {
+  id                         Int      @id @default(1)
+  shippingFeePaise           Int      @default(7900)
+  freeShippingThresholdPaise Int      @default(99900)
+  lowStockThreshold          Int      @default(5)
+  adminNotifyEmail           String?
+  sellerName                 String   @default("")
+  sellerAddress              String   @default("")
+  sellerState                String   @default("")
+  gstin                      String?
+  gstRateLowPct              Int      @default(5)
+  gstRateHighPct             Int      @default(18)
+  gstThresholdPaise          Int      @default(250000)
+  whatsappNumber             String?
+  dailySummaryEnabled        Boolean  @default(true)
+  abandonedCartEnabled       Boolean  @default(true)
+  lastDailySummaryOn         String?
+  customFrontFeePaise        Int      @default(0)
+  customBackFeePaise         Int      @default(14900)
+  updatedAt                  DateTime @updatedAt
 }

@@ -8,4 +8,8 @@ export const BRAND = {
     instagram: "https://instagram.com/",
     youtube: "https://youtube.com/",
   },
+  poweredBy: {
+    name: "The Ark Tech",
+    url: "https://thearktech.in",
+  },
 } as const;
