@@ -3,15 +3,15 @@ import { addressLines, formatPhone } from "@/lib/address-format";
 import { escapeHtml as e } from "@/lib/escape-html";
 import { formatPaise } from "@/lib/money";
 import { isHttpUrl } from "@/lib/url";
+import { absoluteUrl, siteUrl } from "@/lib/site-url";
+import { customPrintLabel, printSidesOf } from "@/lib/custom-pricing";
 import type { OrderView } from "@/server/services/order-records";
 
 export interface RenderedEmail { subject: string; html: string; text: string }
 export interface LowStockRow { productName: string; size: string; colorName: string; sku: string; stock: number }
 export interface DailySummary { dateLabel: string; paidOrders: number; revenuePaise: number; toShip: number; needsAttention: number; lowStock: number }
 
-export function siteUrl(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
-}
+export { absoluteUrl, siteUrl };
 
 const oneLine = (s: string) => s.replace(/[\r\n]+/g, " ").trim();
 const firstName = (name: string) => name.trim().split(/\s+/)[0] || "there";
@@ -38,7 +38,13 @@ function button(href: string, label: string): string {
 
 function itemsHtml(o: OrderView): string {
   const rows = o.items
-    .map((i) => `<tr><td style="padding:6px 0">${e(i.productName)}<br><span style="color:#666;font-size:12px">${e(i.colorName)} / ${e(i.size)} × ${i.quantity}</span></td><td style="padding:6px 0;text-align:right;vertical-align:top">${e(formatPaise(i.lineTotalPaise))}</td></tr>`)
+    .map((i) => {
+      const label = customPrintLabel(printSidesOf(i));
+      const src = label && i.imageUrl ? safeHttpUrl(absoluteUrl(i.imageUrl)) : null;
+      const thumb = src ? `<img src="${e(src)}" width="64" height="80" alt="" style="float:left;margin:0 12px 0 0;border-radius:4px">` : "";
+      const tag = label ? `<br><span style="color:#b45309;font-size:12px">${e(label)}</span>` : "";
+      return `<tr><td style="padding:6px 0">${thumb}${e(i.productName)}<br><span style="color:#666;font-size:12px">${e(i.colorName)} / ${e(i.size)} × ${i.quantity}</span>${tag}</td><td style="padding:6px 0;text-align:right;vertical-align:top">${e(formatPaise(i.lineTotalPaise))}</td></tr>`;
+    })
     .join("");
   const discount = o.discountPaise > 0 ? `<tr><td>Discount</td><td style="text-align:right">−${e(formatPaise(o.discountPaise))}</td></tr>` : "";
   return `<table style="width:100%;border-collapse:collapse;font-size:14px">${rows}
@@ -48,7 +54,10 @@ ${discount}<tr><td>Shipping</td><td style="text-align:right">${o.shippingPaise =
 }
 
 function itemsText(o: OrderView): string {
-  return [...o.items.map((i) => `- ${i.productName} (${i.colorName} / ${i.size}) x ${i.quantity}: ${formatPaise(i.lineTotalPaise)}`), `Total (incl. GST): ${formatPaise(o.totalPaise)}`].join("\n");
+  return [...o.items.map((i) => {
+    const label = customPrintLabel(printSidesOf(i));
+    return `- ${i.productName} (${i.colorName} / ${i.size}) x ${i.quantity}${label ? ` [${label}]` : ""}: ${formatPaise(i.lineTotalPaise)}`;
+  }), `Total (incl. GST): ${formatPaise(o.totalPaise)}`].join("\n");
 }
 
 function addressHtml(o: OrderView): string {

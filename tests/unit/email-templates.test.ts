@@ -13,7 +13,8 @@ function sampleOrder(over: Partial<OrderView> = {}): OrderView {
     paymentProvider: "mock", providerOrderId: "mock_order_1", providerPaymentId: "mock_pay_1",
     carrier: null, trackingNumber: null, trackingUrl: null, customerNote: "<b>ring twice</b>",
     ship: { name: "Asha <script>alert(1)</script> Rao", phone: "9876543210", line1: "12 MG Road", line2: null, landmark: null, city: "Bengaluru", state: "Karnataka", pincode: "560001" },
-    items: [{ id: "i1", productId: "p1", productName: "Tee & <Co>", productSlug: "tee", size: "M", colorName: "Black", imageUrl: null, sku: "SKU-1", unitPricePaise: 59900, quantity: 2, lineTotalPaise: 119800 }],
+    items: [{ id: "i1", productId: "p1", productName: "Tee & <Co>", productSlug: "tee", size: "M", colorName: "Black", imageUrl: null, sku: "SKU-1", unitPricePaise: 59900, quantity: 2, lineTotalPaise: 119800,
+      designId: null, designFrontPreviewUrl: null, designBackPreviewUrl: null, printFrontUrl: null, printBackUrl: null, printedAt: null, heldAt: null, holdNote: null }],
     itemCount: 2, invoiceSnapshot: null,
     ...over,
   };

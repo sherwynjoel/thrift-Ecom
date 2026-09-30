@@ -10,6 +10,10 @@ export interface ShipAddress { name: string; phone: string; line1: string; line2
 export interface OrderItemView {
   id: string; productId: string | null; productName: string; productSlug: string; size: string; colorName: string;
   imageUrl: string | null; sku: string; unitPricePaise: number; quantity: number; lineTotalPaise: number;
+  /** Custom-print lines: the design (null once it is purged) and URL snapshots that keep the order printable without it. */
+  designId: string | null; designFrontPreviewUrl: string | null; designBackPreviewUrl: string | null;
+  printFrontUrl: string | null; printBackUrl: string | null;
+  printedAt: Date | null; heldAt: Date | null; holdNote: string | null;
 }
 export interface OrderView {
   id: string; number: string; status: OrderStatus; userId: string; email: string; createdAt: Date; expiresAt: Date;
@@ -42,6 +46,8 @@ export function toOrderView(o: OrderRow): OrderView {
     items: o.items.map((i) => ({
       id: i.id, productId: i.productId, productName: i.productName, productSlug: i.productSlug, size: i.size, colorName: i.colorName,
       imageUrl: i.imageUrl, sku: i.sku, unitPricePaise: i.unitPricePaise, quantity: i.quantity, lineTotalPaise: i.lineTotalPaise,
+      designId: i.designId, designFrontPreviewUrl: i.designFrontPreviewUrl, designBackPreviewUrl: i.designBackPreviewUrl,
+      printFrontUrl: i.printFrontUrl, printBackUrl: i.printBackUrl, printedAt: i.printedAt, heldAt: i.heldAt, holdNote: i.holdNote,
     })),
     itemCount: o.items.reduce((s, i) => s + i.quantity, 0),
     invoiceSnapshot: parseInvoiceSnapshot(o.invoiceSnapshot),

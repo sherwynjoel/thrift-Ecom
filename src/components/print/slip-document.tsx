@@ -1,6 +1,7 @@
 import { Barcode } from "@/components/print/barcode";
 import { BRAND } from "@/config/brand";
 import { addressLines, formatPhone } from "@/lib/address-format";
+import { customPrintLabel, isCustomItem, printSidesOf } from "@/lib/custom-pricing";
 import { formatDateIst } from "@/lib/dates";
 import type { OrderView } from "@/server/services/order-records";
 import type { StoreSettings } from "@/server/services/settings";
@@ -48,13 +49,16 @@ export function SlipDocument({ order, settings, last = false }: { order: OrderVi
                   <span className="inline-block size-4 border-2 border-black" aria-hidden />
                 </td>
                 <td className="pr-2">
-                  {i.imageUrl && (
+                  {(i.designFrontPreviewUrl ?? i.imageUrl) && (
                     // eslint-disable-next-line @next/next/no-img-element -- print view, no optimisation needed
-                    <img src={i.imageUrl} alt="" width={40} height={40} className="size-10 object-cover" />
+                    <img src={i.designFrontPreviewUrl ?? i.imageUrl ?? undefined} alt="" width={40} height={40} className="size-10 object-cover" />
                   )}
                 </td>
                 <td className="pr-2">{i.productName}</td>
-                <td className="pr-2 font-bold">{i.colorName} / {i.size}</td>
+                <td className="pr-2 font-bold">
+                  {i.colorName} / {i.size}
+                  {isCustomItem(i) && <span className="block" data-testid="slip-custom-print">{customPrintLabel(printSidesOf(i))}</span>}
+                </td>
                 <td className="pr-2 font-mono">{i.sku}</td>
                 <td className="text-right text-[16px] font-bold">{i.quantity}</td>
               </tr>

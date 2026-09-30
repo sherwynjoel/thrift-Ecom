@@ -1,4 +1,5 @@
 import type { OrderView } from "@/server/services/order-records";
+import { isCustomItem } from "@/lib/custom-pricing";
 
 export const HSN_TSHIRT = "6109";
 export const SAC_SHIPPING = "9965";
@@ -65,7 +66,7 @@ export function buildInvoice(args: { items: InvoiceItemInput[]; discountPaise: n
 
 export function invoiceFromOrder(order: OrderView, settings: GstSettings): Invoice {
   return buildInvoice({
-    items: order.items.map((i) => ({ description: `${i.productName} (${i.colorName} / ${i.size}) · ${i.sku}`, quantity: i.quantity, unitPricePaise: i.unitPricePaise, lineTotalPaise: i.lineTotalPaise })),
+    items: order.items.map((i) => ({ description: `${i.productName} (${i.colorName} / ${i.size})${isCustomItem(i) ? " · custom print" : ""} · ${i.sku}`, quantity: i.quantity, unitPricePaise: i.unitPricePaise, lineTotalPaise: i.lineTotalPaise })),
     discountPaise: order.discountPaise, shippingPaise: order.shippingPaise, shipState: order.ship.state, settings,
   });
 }

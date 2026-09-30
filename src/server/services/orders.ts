@@ -7,7 +7,8 @@ import { getPaymentProvider, type PaymentProvider, type ProviderName } from "@/s
 import { quote } from "@/server/services/promotions";
 import { addOrderEvent, flagAttentionOnce, orderWithItems, toOrderSummary, toOrderView, type OrderSummary, type OrderView, type Tx } from "@/server/services/order-records";
 import { notifyOrder } from "@/server/services/notifications";
-import { getSettings } from "@/server/services/settings";
+import { getCustomFees, getSettings } from "@/server/services/settings";
+import { designFileUrl } from "@/server/services/designs";
 import { lockUser } from "@/server/db-locks";
 import type { Page } from "@/server/services/catalog";
 import { canCancel, isPaidStatus, ORDER_STATUS_LABEL, PAID_STATUSES, type OrderEventType } from "@/lib/order-status";
@@ -15,6 +16,7 @@ import { invoiceSnapshotFrom } from "@/lib/invoice-snapshot";
 import { formatPaise } from "@/lib/money";
 import { variantImageUrl } from "@/lib/variant-image";
 import { COUPON_UNAVAILABLE, type PricingLine } from "@/lib/pricing";
+import { customUnitPricePaise, designSides, isCustomItem, type CustomFees } from "@/lib/custom-pricing";
 
 export const ORDER_TTL_MS = 30 * 60 * 1000;
 export const MIN_ORDER_PAISE = 100;
@@ -32,6 +34,7 @@ export interface CheckoutPayload {
 }
 
 const checkoutLineInclude = {
+  design: { select: { id: true, frontPreviewKey: true, backPreviewKey: true, frontPrintKey: true, backPrintKey: true } },
   variant: {
     include: {
       product: { include: { images: { orderBy: { sortOrder: "asc" as const } }, collections: { select: { collectionId: true } } } },
@@ -44,16 +47,22 @@ export async function loadCheckoutLines(userId: string): Promise<CheckoutLineRow
   return db.cartItem.findMany({ where: { cart: { userId } }, orderBy: { createdAt: "asc" }, include: checkoutLineInclude });
 }
 
-export function unitPriceOf(l: CheckoutLineRow): number {
-  return l.variant.pricePaise ?? l.variant.product.basePricePaise;
+/** The blank's price plus the print fee for each printed side (fees always come from StoreSetting, never the client). */
+export function unitPriceOf(l: CheckoutLineRow, fees: CustomFees): number {
+  return customUnitPricePaise(l.variant.pricePaise ?? l.variant.product.basePricePaise, l.design ? designSides(l.design) : null, fees);
 }
 
 export function lineName(l: CheckoutLineRow): string {
-  return `${l.variant.product.name} (${l.variant.colorName} / ${l.variant.size})`;
+  return `${l.variant.product.name} (${l.variant.colorName} / ${l.variant.size})${l.design ? " · custom print" : ""}`;
 }
 
-export function toPricingLines(rows: CheckoutLineRow[]): PricingLine[] {
-  return rows.map((l) => ({ unitPricePaise: unitPriceOf(l), quantity: l.quantity, collectionIds: l.variant.product.collections.map((c) => c.collectionId) }));
+export function toPricingLines(rows: CheckoutLineRow[], fees: CustomFees): PricingLine[] {
+  return rows.map((l) => ({
+    unitPricePaise: unitPriceOf(l, fees),
+    quantity: l.quantity,
+    collectionIds: l.variant.product.collections.map((c) => c.collectionId),
+    custom: l.designId !== null,
+  }));
 }
 
 /**
@@ -74,21 +83,27 @@ async function ownPendingHolds(userId: string, variantIds: string[]): Promise<Ma
 }
 
 /**
- * Trims cart lines to what is in stock. With `userId`, quantities reserved by that user's own open
- * pending orders count as available to them, so returning to checkout after dismissing the payment
- * window does not strip the bag of the very units their unpaid order is holding.
+ * Trims cart lines to what is in stock. Plain and custom lines of one variant share its stock: lines
+ * are served in bag order (oldest first) from one running per-variant balance, so a later line only
+ * gets what earlier lines left. With `userId`, quantities reserved by that user's own open pending
+ * orders count as available to them, so returning to checkout after dismissing the payment window
+ * does not strip the bag of the very units their unpaid order is holding.
  */
 export async function reconcileCartStock(rows: CheckoutLineRow[], userId?: string): Promise<{ rows: CheckoutLineRow[]; issues: StockIssue[] }> {
   const kept: CheckoutLineRow[] = [];
   const issues: StockIssue[] = [];
-  const holds = userId ? await ownPendingHolds(userId, rows.map((l) => l.variantId)) : new Map<string, number>();
+  const holds = userId ? await ownPendingHolds(userId, [...new Set(rows.map((l) => l.variantId))]) : new Map<string, number>();
+  const remaining = new Map<string, number>(); // variantId → units still free for later lines of this bag
   for (const l of rows) {
-    const available = l.variant.product.status === "ACTIVE" ? Math.max(0, l.variant.stock) + (holds.get(l.variantId) ?? 0) : 0;
+    const total = l.variant.product.status === "ACTIVE" ? Math.max(0, l.variant.stock) + (holds.get(l.variantId) ?? 0) : 0;
+    const available = remaining.get(l.variantId) ?? total;
     if (l.quantity <= available) {
       kept.push(l);
+      remaining.set(l.variantId, available - l.quantity);
       continue;
     }
     issues.push({ variantId: l.variantId, name: lineName(l), requested: l.quantity, available });
+    remaining.set(l.variantId, 0);
     if (available === 0) {
       await db.cartItem.delete({ where: { id: l.id } });
     } else {
@@ -104,13 +119,23 @@ async function nextOrderNumber(tx: Tx): Promise<string> {
   return `ORD-${rows[0].n.toString()}`;
 }
 
-function snapshot(l: CheckoutLineRow) {
+/**
+ * An order line as bought. Custom lines also keep URL snapshots of the design's previews and print
+ * files, so the order stays printable and viewable after the design row is removed with its product
+ * (OrderItem.designId is SetNull). Their image is the front (else back) preview.
+ */
+function snapshot(l: CheckoutLineRow, fees: CustomFees) {
   const p = l.variant.product;
-  const unit = unitPriceOf(l);
+  const unit = unitPriceOf(l, fees);
+  const d = l.design;
+  const designFrontPreviewUrl = designFileUrl(d?.frontPreviewKey ?? null);
+  const designBackPreviewUrl = designFileUrl(d?.backPreviewKey ?? null);
   return {
     productId: p.id, variantId: l.variantId, productName: p.name, productSlug: p.slug, size: l.variant.size,
-    colorName: l.variant.colorName, imageUrl: variantImageUrl(p.images, l.variant.colorName), sku: l.variant.sku,
-    unitPricePaise: unit, quantity: l.quantity, lineTotalPaise: unit * l.quantity,
+    colorName: l.variant.colorName, imageUrl: designFrontPreviewUrl ?? designBackPreviewUrl ?? variantImageUrl(p.images, l.variant.colorName),
+    sku: l.variant.sku, unitPricePaise: unit, quantity: l.quantity, lineTotalPaise: unit * l.quantity,
+    designId: d?.id ?? null, designFrontPreviewUrl, designBackPreviewUrl,
+    printFrontUrl: designFileUrl(d?.frontPrintKey ?? null), printBackUrl: designFileUrl(d?.backPrintKey ?? null),
   };
 }
 
@@ -120,7 +145,9 @@ function byVariantId<T extends { variantId: string | null }>(items: T[]): T[] {
 }
 
 /**
- * True when an open order IS this checkout attempt: same items (variantId + quantity), same coupon,
+ * True when an open order IS this checkout attempt: same items (variantId + designId + quantity — a
+ * bag can hold a plain line and custom lines of one variant, and a design is immutable once in a bag,
+ * so its id pins the print and its fee), same coupon,
  * same total, same delivery address and note, under the same provider. A retry (double-click Pay,
  * two tabs, a client retry after a dropped response) that still matches its still-open order should
  * hand back that same order rather than superseding it — superseding a payable order is itself the
@@ -132,7 +159,7 @@ function sameOpenOrder(
     totalPaise: number; couponCode: string | null; paymentProvider: string; customerNote: string | null;
     shipName: string; shipPhone: string; shipLine1: string; shipLine2: string | null; shipLandmark: string | null;
     shipCity: string; shipState: string; shipPincode: string;
-    items: { variantId: string | null; quantity: number }[];
+    items: { variantId: string | null; designId: string | null; quantity: number }[];
   },
   rows: CheckoutLineRow[], couponCode: string | null, totalPaise: number, providerName: string,
   address: { fullName: string; phone: string; line1: string; line2: string | null; landmark: string | null; city: string; state: string; pincode: string },
@@ -145,10 +172,12 @@ function sameOpenOrder(
   if (o.shipLine1 !== address.line1 || (o.shipLine2 ?? null) !== (address.line2 ?? null)) return false;
   if ((o.shipLandmark ?? null) !== (address.landmark ?? null)) return false;
   if (o.shipCity !== address.city || o.shipState !== address.state || o.shipPincode !== address.pincode) return false;
-  const want = new Map(rows.map((r) => [r.variantId, r.quantity]));
+  const lineKey = (variantId: string, designId: string | null) => `${variantId}|${designId ?? ""}`;
+  const want = new Map(rows.map((r) => [lineKey(r.variantId, r.designId), r.quantity]));
+  if (want.size !== rows.length) return false;
   const have = o.items.filter((i) => i.variantId !== null);
   if (have.length !== want.size) return false;
-  return have.every((it) => want.get(it.variantId!) === it.quantity);
+  return have.every((it) => want.get(lineKey(it.variantId!, it.designId)) === it.quantity);
 }
 
 /**
@@ -287,7 +316,8 @@ export async function placeOrder(userId: string, input: unknown): Promise<Checko
   if (issues.length) throw new StockChangedError(issues);
 
   const now = new Date();
-  const price = await quote({ lines: toPricingLines(rows), couponCode, userId, now });
+  const fees = await getCustomFees();
+  const price = await quote({ lines: toPricingLines(rows, fees), couponCode, userId, now });
   if (couponCode?.trim() && price.couponError) throw new ValidationError({ couponCode: [price.couponError] });
   if (price.totalPaise < MIN_ORDER_PAISE) throw new ValidationError({ couponCode: ["Order total must be at least ₹1"] });
 
@@ -348,7 +378,7 @@ export async function placeOrder(userId: string, input: unknown): Promise<Checko
         paymentProvider: provider.name,
         customerNote: customerNote?.trim() || null,
         expiresAt: new Date(now.getTime() + ORDER_TTL_MS),
-        items: { create: rows.map(snapshot) },
+        items: { create: rows.map((l) => snapshot(l, fees)) },
         events: { create: { type: "CREATED", message: `Order placed for ${formatPaise(price.totalPaise)}` } },
       },
     });
@@ -535,10 +565,22 @@ async function recordSecondPayment(orderId: string, paymentId: string, provider:
   });
 }
 
-async function afterPaid(orderId: string, userId: string, items: { variantId: string | null }[]): Promise<void> {
-  const variantIds = items.map((i) => i.variantId).filter((v): v is string => v !== null);
+/**
+ * Clears exactly what was ordered from the bag: plain lines by variant, custom lines by design. A
+ * custom line added after the order was placed (another design on the same tee) stays. An ordered
+ * custom item whose design row is gone (designId nulled) is recognised by its print snapshots and is
+ * never mistaken for a plain line of its variant.
+ */
+async function afterPaid(
+  orderId: string, userId: string,
+  items: { variantId: string | null; designId: string | null; printFrontUrl: string | null; printBackUrl: string | null }[],
+): Promise<void> {
+  const plainVariantIds = items.filter((i) => i.designId === null && !isCustomItem(i) && i.variantId !== null).map((i) => i.variantId as string);
+  const designIds = items.map((i) => i.designId).filter((d): d is string => d !== null);
   try {
-    await db.cartItem.deleteMany({ where: { cart: { userId }, variantId: { in: variantIds } } });
+    await db.cartItem.deleteMany({
+      where: { cart: { userId }, OR: [{ designId: null, variantId: { in: plainVariantIds } }, { designId: { in: designIds } }] },
+    });
     await db.cart.updateMany({ where: { userId }, data: { remindedAt: null } });
   } catch (err) {
     console.error("[orders] cart cleanup failed", orderId, err);

@@ -190,8 +190,8 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
           <div role="status" className="rounded-md border border-border bg-surface p-4 text-sm" data-testid="stock-issues">
             <p className="font-medium">Some items changed while you were shopping</p>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-text-muted">
-              {view.stockIssues.map((i) => (
-                <li key={i.variantId}>
+              {view.stockIssues.map((i, n) => (
+                <li key={`${i.variantId}-${n}`}>
                   {i.name}: {i.available === 0 ? "sold out, removed from your bag" : `only ${i.available} left, we updated your bag`}
                 </li>
               ))}
@@ -261,7 +261,7 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
           <ul id="checkout-lines" className="mt-2 divide-y divide-border" data-testid="checkout-lines">
             {view.lines.map((l, i) => (
               <li
-                key={l.variantId}
+                key={`${l.variantId}|${l.designId ?? ""}`}
                 className={cn("flex gap-3 py-3", i >= COLLAPSED_LINES && !showAllLines && "hidden lg:flex")}
                 data-testid="checkout-line"
               >
@@ -271,6 +271,7 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <p className="line-clamp-2 text-sm font-medium">{l.productName}</p>
                   <p className="text-xs text-text-muted">{l.colorName} / {l.size} × {l.quantity}</p>
+                  {l.customLabel && <span className="text-xs font-medium text-brand" data-testid="checkout-custom-badge">{l.customLabel}</span>}
                 </div>
                 <p className="shrink-0 font-display text-lg">{formatPaise(l.lineTotalPaise)}</p>
               </li>

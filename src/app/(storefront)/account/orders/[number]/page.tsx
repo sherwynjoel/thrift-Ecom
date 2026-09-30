@@ -6,10 +6,13 @@ import { OrderStatusPill } from "@/components/storefront/account/order-status-pi
 import { OrderStepper } from "@/components/storefront/account/order-stepper";
 import { AutoRefresh } from "@/components/storefront/checkout/auto-refresh";
 import { RetryPaymentButton } from "@/components/storefront/checkout/retry-payment-button";
+import { CustomPrintThumbs } from "@/components/storefront/custom-print-thumbs";
 import { PriceBreakup } from "@/components/storefront/price-breakup";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BRAND } from "@/config/brand";
 import { addressLines, formatPhone } from "@/lib/address-format";
+import { customPrintLabel, isCustomItem, printSidesOf } from "@/lib/custom-pricing";
 import { formatDateTimeIst, formatTimeIst } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
 import { isPaidStatus, pendingPaymentMode } from "@/lib/order-status";
@@ -101,8 +104,17 @@ export default async function AccountOrderDetailPage({ params, searchParams }: {
                   {i.imageUrl && <Image src={i.imageUrl} alt={i.productName} fill sizes="56px" className="object-cover" />}
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <Link href={`/products/${i.productSlug}`} className="line-clamp-2 text-sm font-medium hover:underline">{i.productName}</Link>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link href={`/products/${i.productSlug}`} className="line-clamp-2 text-sm font-medium hover:underline">{i.productName}</Link>
+                    {isCustomItem(i) && <Badge variant="outline">Custom</Badge>}
+                  </div>
                   <p className="text-xs text-text-muted">{i.colorName} / {i.size} × {i.quantity}</p>
+                  {isCustomItem(i) && (
+                    <>
+                      <p className="text-xs font-medium text-brand">{customPrintLabel(printSidesOf(i))}</p>
+                      <CustomPrintThumbs front={i.designFrontPreviewUrl} back={i.designBackPreviewUrl} className="mt-1" />
+                    </>
+                  )}
                 </div>
                 <p className="shrink-0 font-display text-lg">{formatPaise(i.lineTotalPaise)}</p>
               </li>

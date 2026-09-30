@@ -11,13 +11,17 @@ import {
   type CheckoutLineRow, type MarkPaidOutcome,
 } from "@/server/services/orders";
 import { getLiveOffers, quote } from "@/server/services/promotions";
-import { getSettings } from "@/server/services/settings";
+import { getCustomFees, getSettings } from "@/server/services/settings";
+import { designFileUrl } from "@/server/services/designs";
 import { priceCart, type PriceResult } from "@/lib/pricing";
 import { variantImageUrl } from "@/lib/variant-image";
+import { customFeesOf, customPrintLabel, customUnitPricePaise, designSides, type CustomFees } from "@/lib/custom-pricing";
 
 export interface CheckoutLineView {
   variantId: string; productName: string; productSlug: string; imageUrl: string | null; size: string; colorName: string;
   unitPricePaise: number; quantity: number; lineTotalPaise: number;
+  /** Custom-print lines: the design and its label ("Custom print: front + back"); null for plain lines. */
+  designId: string | null; customLabel: string | null;
 }
 export interface CheckoutView {
   lines: CheckoutLineView[]; addresses: AddressView[]; price: PriceResult; stockIssues: StockIssue[]; email: string; freeShippingThresholdPaise: number;
@@ -26,12 +30,14 @@ export interface CartPricingPreview {
   offerLabel: string | null; discountPaise: number; discountedSubtotalPaise: number; shippingPaise: number; totalPaise: number; freeShippingThresholdPaise: number;
 }
 
-function toLineView(l: CheckoutLineRow): CheckoutLineView {
+function toLineView(l: CheckoutLineRow, fees: CustomFees): CheckoutLineView {
   const p = l.variant.product;
-  const unit = unitPriceOf(l);
+  const unit = unitPriceOf(l, fees);
+  const preview = designFileUrl(l.design?.frontPreviewKey ?? l.design?.backPreviewKey ?? null);
   return {
-    variantId: l.variantId, productName: p.name, productSlug: p.slug, imageUrl: variantImageUrl(p.images, l.variant.colorName), size: l.variant.size,
+    variantId: l.variantId, productName: p.name, productSlug: p.slug, imageUrl: preview ?? variantImageUrl(p.images, l.variant.colorName), size: l.variant.size,
     colorName: l.variant.colorName, unitPricePaise: unit, quantity: l.quantity, lineTotalPaise: unit * l.quantity,
+    designId: l.designId, customLabel: l.design ? customPrintLabel(designSides(l.design)) : null,
   };
 }
 
@@ -40,9 +46,13 @@ export async function getCheckoutView(userId: string, couponCode?: string | null
     loadCheckoutLines(userId), listAddresses(userId), db.user.findUnique({ where: { id: userId }, select: { email: true } }), getSettings(),
   ]);
   if (!user) throw new NotFoundError("User");
+  const fees = customFeesOf(settings);
   const { rows, issues } = await reconcileCartStock(loaded, userId);
-  const price = await quote({ lines: toPricingLines(rows), couponCode, userId });
-  return { lines: rows.map(toLineView), addresses, price, stockIssues: issues, email: user.email, freeShippingThresholdPaise: settings.freeShippingThresholdPaise };
+  const price = await quote({ lines: toPricingLines(rows, fees), couponCode, userId });
+  return {
+    lines: rows.map((l) => toLineView(l, fees)), addresses, price, stockIssues: issues, email: user.email,
+    freeShippingThresholdPaise: settings.freeShippingThresholdPaise,
+  };
 }
 
 /** Coupon checks are an oracle for which codes exist; cap them per user (UI action and API alike). */
@@ -64,23 +74,34 @@ export function limitCouponQuotes(userId: string): void {
  * note — a wrong-address risk, not just a lost draft (see N1).
  */
 export function checkoutFormKey(view: Pick<CheckoutView, "lines">): string {
-  return view.lines.map((l) => `${l.variantId}:${l.quantity}:${l.unitPricePaise}`).join(",");
+  return view.lines.map((l) => `${checkoutLineKey(l)}:${l.quantity}:${l.unitPricePaise}`).join(",");
+}
+
+/** Unique per bag line: one plain line per variant, one line per design. */
+function checkoutLineKey(l: Pick<CheckoutLineView, "variantId" | "designId">): string {
+  return `${l.variantId}|${l.designId ?? ""}`;
 }
 
 export async function quoteForUser(userId: string, couponCode: string | null): Promise<PriceResult> {
-  return quote({ lines: toPricingLines(await loadCheckoutLines(userId)), couponCode, userId });
+  const [lines, fees] = await Promise.all([loadCheckoutLines(userId), getCustomFees()]);
+  return quote({ lines: toPricingLines(lines, fees), couponCode, userId });
 }
 
 export async function previewCartPricing(ref: CartRef): Promise<CartPricingPreview> {
   const items = await db.cartItem.findMany({
     where: { cart: "userId" in ref ? { userId: ref.userId } : { guestToken: ref.guestToken } },
-    include: { variant: { include: { product: { select: { basePricePaise: true, collections: { select: { collectionId: true } } } } } } },
+    include: {
+      design: { select: { frontPrintKey: true, backPrintKey: true } },
+      variant: { include: { product: { select: { basePricePaise: true, collections: { select: { collectionId: true } } } } } },
+    },
   });
   const [settings, offers] = await Promise.all([getSettings(), items.length ? getLiveOffers() : Promise.resolve([])]);
+  const fees = customFeesOf(settings);
   const lines = items.map((i) => ({
-    unitPricePaise: i.variant.pricePaise ?? i.variant.product.basePricePaise,
+    unitPricePaise: customUnitPricePaise(i.variant.pricePaise ?? i.variant.product.basePricePaise, i.design ? designSides(i.design) : null, fees),
     quantity: i.quantity,
     collectionIds: i.variant.product.collections.map((c) => c.collectionId),
+    custom: i.designId !== null,
   }));
   const r = priceCart(lines, { offers, coupon: null, settings, now: new Date() });
   return {
