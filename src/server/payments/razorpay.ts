@@ -1,6 +1,6 @@
 import { PaymentError } from "@/server/errors";
 import { verifyHmac } from "./hmac";
-import type { PaymentProvider, ProviderOrder, ProviderRefund } from "./types";
+import type { PaymentProvider, ProviderOrder, ProviderPayment, ProviderRefund } from "./types";
 
 const API = "https://api.razorpay.com/v1";
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
@@ -68,6 +68,11 @@ export class RazorpayProvider implements PaymentProvider {
 
   async fetchRefunds(paymentId: string): Promise<ProviderRefund[]> {
     const r = await this.request<{ items?: { id: string; amount: number; status: string }[] }>("GET", `/payments/${encodeURIComponent(paymentId)}/refunds`);
+    return (r.items ?? []).map((x) => ({ id: x.id, amountPaise: x.amount, status: x.status }));
+  }
+
+  async fetchOrderPayments(providerOrderId: string): Promise<ProviderPayment[]> {
+    const r = await this.request<{ items?: { id: string; amount: number; status: string }[] }>("GET", `/orders/${encodeURIComponent(providerOrderId)}/payments`);
     return (r.items ?? []).map((x) => ({ id: x.id, amountPaise: x.amount, status: x.status }));
   }
 }

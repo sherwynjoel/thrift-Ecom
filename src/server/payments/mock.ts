@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { hmacSha256Hex, verifyHmac } from "./hmac";
-import type { PaymentProvider, ProviderOrder, ProviderRefund } from "./types";
+import type { PaymentProvider, ProviderOrder, ProviderPayment, ProviderRefund } from "./types";
 
 /** Not a secret: the mock provider only runs outside production. */
 export const MOCK_SECRET = "mock_payment_secret";
@@ -36,6 +36,11 @@ export class MockProvider implements PaymentProvider {
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async fetchRefunds(_paymentId: string): Promise<ProviderRefund[]> {
+    return [];
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async fetchOrderPayments(_providerOrderId: string): Promise<ProviderPayment[]> {
     return [];
   }
 }

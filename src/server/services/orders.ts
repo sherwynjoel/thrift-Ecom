@@ -509,7 +509,7 @@ async function afterPaid(orderId: string, userId: string, items: { variantId: st
   await notifyOrder(orderId, "paid");
 }
 
-export type PaymentSource = "client" | "webhook" | "mock";
+export type PaymentSource = "client" | "webhook" | "mock" | "reconcile";
 export type MarkPaidOutcome = "paid" | "already_paid" | "attention" | "amount_mismatch";
 
 export async function markOrderPaid(

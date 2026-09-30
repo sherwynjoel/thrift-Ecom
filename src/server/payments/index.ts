@@ -2,7 +2,7 @@ import { MockProvider } from "./mock";
 import { RazorpayProvider } from "./razorpay";
 import type { PaymentProvider, ProviderName } from "./types";
 
-export type { PaymentProvider, ProviderName, ProviderOrder, ProviderRefund } from "./types";
+export type { PaymentProvider, ProviderName, ProviderOrder, ProviderPayment, ProviderRefund } from "./types";
 
 let cached: PaymentProvider | undefined;
 
