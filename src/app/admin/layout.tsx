@@ -11,8 +11,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   await requireAdminPage();
   const toShip = await countToShip();
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[220px_1fr]" data-testid="admin-shell">
-      <aside className="flex flex-wrap items-center justify-between gap-4 border-b border-border bg-surface p-4 lg:flex-col lg:items-stretch lg:justify-start lg:gap-0 lg:sticky lg:top-0 lg:h-dvh lg:border-b-0 lg:border-r">
+    <div className="min-h-dvh lg:grid lg:grid-cols-[220px_1fr] print:block" data-testid="admin-shell">
+      <aside className="flex flex-wrap items-center justify-between gap-4 border-b border-border bg-surface p-4 lg:flex-col lg:items-stretch lg:justify-start lg:gap-0 lg:sticky lg:top-0 lg:h-dvh lg:border-b-0 lg:border-r print:hidden">
         <div className="lg:mb-8">
           <p className="font-display text-2xl uppercase">{BRAND.name}</p>
           <p className="text-xs uppercase tracking-widest text-text-muted">Admin</p>
@@ -27,7 +27,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <SignOutButton />
         </div>
       </aside>
-      <main className="min-w-0 p-4 sm:p-8">{children}</main>
+      <main className="min-w-0 p-4 sm:p-8 print:p-0">{children}</main>
     </div>
   );
 }

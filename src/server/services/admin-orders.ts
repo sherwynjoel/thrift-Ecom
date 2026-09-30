@@ -277,3 +277,11 @@ export async function exportOrdersCsv(sel: AdminOrderFilter & { ids?: string[] }
 export async function countToShip(): Promise<number> {
   return db.order.count({ where: { status: { in: [...TO_SHIP_STATUSES] } } });
 }
+
+export async function getOrdersForPrint(ids: string[]): Promise<OrderView[]> {
+  const unique = [...new Set(ids)].slice(0, 100);
+  if (unique.length === 0) return [];
+  const rows = await db.order.findMany({ where: { id: { in: unique } }, include: orderWithItems });
+  const byId = new Map(rows.map((r) => [r.id, toOrderView(r)]));
+  return unique.map((id) => byId.get(id)).filter((o): o is OrderView => Boolean(o));
+}

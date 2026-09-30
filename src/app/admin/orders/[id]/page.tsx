@@ -15,6 +15,7 @@ import { addressLines, addressText, formatPhone } from "@/lib/address-format";
 import { orderWhatsappText, telLink, whatsappLink } from "@/lib/contact-links";
 import { formatDateTimeIst } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
+import { isPaidStatus } from "@/lib/order-status";
 import { NotFoundError } from "@/server/errors";
 import { getAdminOrder } from "@/server/services/admin-orders";
 import { orderDiscountLabel } from "@/server/services/order-records";
@@ -63,9 +64,24 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
         </div>
       )}
 
-      <OrderActions
-        order={{ id: order.id, number: order.number, status: order.status, totalPaise: order.totalPaise, providerPaymentId: order.providerPaymentId, paymentProvider: order.paymentProvider }}
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <OrderActions
+          order={{ id: order.id, number: order.number, status: order.status, totalPaise: order.totalPaise, providerPaymentId: order.providerPaymentId, paymentProvider: order.paymentProvider }}
+        />
+        <div className="flex flex-wrap items-center gap-2" data-testid="print-actions">
+          <Button variant="secondary" className="h-11" render={<a href={`/admin/orders/print?doc=label&ids=${order.id}`} target="_blank" rel="noopener" />} nativeButton={false} data-testid="print-label">
+            Label
+          </Button>
+          <Button variant="secondary" className="h-11" render={<a href={`/admin/orders/print?doc=slip&ids=${order.id}`} target="_blank" rel="noopener" />} nativeButton={false} data-testid="print-slip">
+            Packing slip
+          </Button>
+          {(isPaidStatus(order.status) || order.status === "REFUNDED") && (
+            <Button variant="secondary" className="h-11" render={<a href={`/admin/orders/print?doc=invoice&ids=${order.id}`} target="_blank" rel="noopener" />} nativeButton={false} data-testid="print-invoice">
+              Invoice
+            </Button>
+          )}
+        </div>
+      </div>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
         {/* Customer and ship-to come first on phones: they are what the owner needs while packing. */}

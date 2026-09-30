@@ -8,7 +8,7 @@ import { markOrderPaid, placeOrder } from "@/server/services/orders";
 import { getEmail, type ConsoleEmail } from "@/server/adapters/email";
 import { getPaymentProvider } from "@/server/payments";
 import {
-  adminCancelOrder, advanceOrderStatus, bulkMarkProcessing, clearAttention, countToShip, exportOrdersCsv, getAdminOrder, listAdminOrders, refundOrder, saveTracking, setAdminNote,
+  adminCancelOrder, advanceOrderStatus, bulkMarkProcessing, clearAttention, countToShip, exportOrdersCsv, getAdminOrder, getOrdersForPrint, listAdminOrders, refundOrder, saveTracking, setAdminNote,
 } from "@/server/services/admin-orders";
 import { ConflictError, ValidationError } from "@/server/errors";
 
@@ -225,5 +225,16 @@ describe("admin order actions", () => {
     const csv = await exportOrdersCsv({ tab: "to-ship" });
     expect(csv).toContain("ORD-4001");
     expect(csv).not.toContain("ORD-4002");
+  });
+});
+
+describe("getOrdersForPrint", () => {
+  beforeEach(resetDb);
+
+  it("keeps the requested order and drops unknown ids", async () => {
+    const u = await createUser();
+    const a = await createOrderRow(u.id);
+    const b = await createOrderRow(u.id);
+    expect((await getOrdersForPrint([b.id, "nope", a.id, b.id])).map((o) => o.id)).toEqual([b.id, a.id]);
   });
 });

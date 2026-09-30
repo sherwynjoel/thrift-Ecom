@@ -137,7 +137,7 @@ export function OrdersTable({ rows, exportQuery }: { rows: AdminOrderRow[]; expo
 
       {count > 0 && (
         <div
-          className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-bg p-3 md:sticky md:bottom-4 md:mt-4 md:rounded-md md:border"
+          className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-bg p-3 md:sticky md:bottom-4 md:mt-4 md:rounded-md md:border print:hidden"
           role="region"
           aria-label="Bulk actions"
           data-testid="bulk-bar"
@@ -148,6 +148,25 @@ export function OrdersTable({ rows, exportQuery }: { rows: AdminOrderRow[]; expo
               Clear
             </Button>
             <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto">
+              {/* Print buttons come first: printing labels/slips is the most-used bulk action while packing. */}
+              <Button
+                variant="secondary"
+                className="h-11 px-4"
+                render={<a href={`/admin/orders/print?doc=label&ids=${chosen.map(encodeURIComponent).join(",")}`} target="_blank" rel="noopener" />}
+                nativeButton={false}
+                data-testid="bulk-print-labels"
+              >
+                Print labels
+              </Button>
+              <Button
+                variant="secondary"
+                className="h-11 px-4"
+                render={<a href={`/admin/orders/print?doc=slip&ids=${chosen.map(encodeURIComponent).join(",")}`} target="_blank" rel="noopener" />}
+                nativeButton={false}
+                data-testid="bulk-print-slips"
+              >
+                Print slips
+              </Button>
               <Button type="button" className="h-11 px-4" onClick={markProcessing} disabled={pending} data-testid="bulk-processing">
                 {pending ? "Updating…" : "Mark processing"}
               </Button>
