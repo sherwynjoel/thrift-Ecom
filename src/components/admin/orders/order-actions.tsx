@@ -1,6 +1,5 @@
 "use client";
 
-import type { OrderStatus } from "@prisma/client";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -10,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { formatPaise } from "@/lib/money";
-import { canCancel, isPaidStatus, nextFulfilmentStatus, type FulfilmentStatus } from "@/lib/order-status";
+import { canCancel, canRefund, isPaidStatus, nextFulfilmentStatus, type FulfilmentStatus } from "@/lib/order-status";
 import type { AdminOrderDetail } from "@/server/services/admin-orders";
 
 const GENERIC_ERROR = "Something went wrong. Please try again.";
@@ -18,10 +17,6 @@ const NEXT_LABEL: Record<FulfilmentStatus, string> = { PROCESSING: "Mark process
 const DONE_TOAST: Record<FulfilmentStatus, string> = { PROCESSING: "Marked processing", SHIPPED: "Marked shipped; customer emailed", DELIVERED: "Marked delivered; customer emailed" };
 
 type Props = { order: Pick<AdminOrderDetail, "id" | "number" | "status" | "totalPaise" | "providerPaymentId" | "paymentProvider" | "refundVia"> };
-
-function canRefund(status: OrderStatus, paymentId: string | null): boolean {
-  return isPaidStatus(status) || (status === "CANCELLED" && Boolean(paymentId));
-}
 
 /** Moves focus to the tracking form, so "Mark shipped" never ships without a tracking number by accident. */
 function focusTracking() {
@@ -82,7 +77,8 @@ export function OrderActions({ order }: Props) {
           if (!r.fieldErrors?.reason) setCancelOpen(false);
           return;
         }
-        toast.success(`Order ${order.number} cancelled; stock restocked`);
+        const stock = r.data.restocked ? "stock restocked" : "no stock to restock";
+        toast.success(`Order ${order.number} cancelled; ${stock}${r.data.refundPending ? ". Refund pending: use Refund" : ""}`);
         setCancelOpen(false);
         router.refresh();
       } catch {
@@ -127,8 +123,8 @@ export function OrderActions({ order }: Props) {
 
   const showCancel = canCancel(order.status);
   // Only needed when Refund would call the provider: otherwise Refund already records a manual refund.
-  const showMarkRefunded = isPaidStatus(order.status) && order.refundVia !== null;
   const showRefund = canRefund(order.status, order.providerPaymentId);
+  const showMarkRefunded = showRefund && order.refundVia !== null;
   if (!next && !showCancel && !showRefund) return null;
 
   return (
@@ -164,7 +160,12 @@ export function OrderActions({ order }: Props) {
       <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
         <DialogContent className="bg-bg">
           <DialogTitle>Cancel order {order.number}?</DialogTitle>
-          <DialogDescription>Stock goes back on sale. This does not refund money; use Refund for that.</DialogDescription>
+          <DialogDescription>
+            Stock goes back on sale. This does not refund money
+            {isPaidStatus(order.status) && order.providerPaymentId
+              ? `: the order stays flagged "refund pending" until you refund ${formatPaise(order.totalPaise)} with Refund.`
+              : "; use Refund for that."}
+          </DialogDescription>
           <div>
             <Label htmlFor="cancel-reason">Reason (optional, the customer does not see it)</Label>
             <textarea

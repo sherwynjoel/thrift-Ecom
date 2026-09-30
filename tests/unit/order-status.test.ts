@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canCancel, fulfilmentRank, isPaidStatus, nextFulfilmentStatus, ORDER_STATUS_LABEL } from "@/lib/order-status";
+import { canCancel, canRefund, fulfilmentRank, isPaidStatus, nextFulfilmentStatus, ORDER_STATUS_LABEL, pendingPaymentMode } from "@/lib/order-status";
 
 describe("order status rules", () => {
   it("knows which statuses count as paid", () => {
@@ -29,5 +29,26 @@ describe("order status rules", () => {
   it("labels every status", () => {
     expect(ORDER_STATUS_LABEL.PENDING_PAYMENT).toBe("Awaiting payment");
     expect(Object.keys(ORDER_STATUS_LABEL)).toHaveLength(8);
+  });
+});
+
+describe("canRefund", () => {
+  it("allows paid orders and cancelled ones with a captured payment only", () => {
+    expect(canRefund("PAID", "pay_1")).toBe(true);
+    expect(canRefund("DELIVERED", null)).toBe(true);
+    expect(canRefund("CANCELLED", "pay_1")).toBe(true);
+    expect(canRefund("CANCELLED", null)).toBe(false);
+    expect(canRefund("REFUNDED", "pay_1")).toBe(false);
+    expect(canRefund("PENDING_PAYMENT", null)).toBe(false);
+  });
+});
+
+describe("pendingPaymentMode (M4)", () => {
+  it("offers Retry only after a known failed or dismissed attempt, otherwise shows 'confirming'", () => {
+    expect(pendingPaymentMode(undefined, false)).toBe("confirming");
+    expect(pendingPaymentMode("verifying", false)).toBe("confirming");
+    expect(pendingPaymentMode("failed", false)).toBe("retry");
+    expect(pendingPaymentMode(["dismissed"], false)).toBe("retry");
+    expect(pendingPaymentMode(undefined, true)).toBe("retry");
   });
 });

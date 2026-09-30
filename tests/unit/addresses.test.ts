@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetDb } from "../helpers/db";
 import { createUser } from "../helpers/fixtures";
-import { createAddress, deleteAddress, getAddress, listAddresses, MAX_ADDRESSES, setDefaultAddress, updateAddress } from "@/server/services/addresses";
+import { createAddress, deleteAddress, listAddresses, MAX_ADDRESSES, setDefaultAddress, updateAddress } from "@/server/services/addresses";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 
 const addr = (over: Record<string, unknown> = {}) => ({
@@ -67,7 +67,7 @@ describe("addresses service", () => {
     const u = await createUser();
     const other = await createUser();
     const a = await createAddress(u.id, addr());
-    await expect(getAddress(other.id, a.id)).rejects.toBeInstanceOf(NotFoundError);
+    expect(await listAddresses(other.id)).toEqual([]);
     await expect(updateAddress(other.id, a.id, addr())).rejects.toBeInstanceOf(NotFoundError);
     await expect(deleteAddress(other.id, a.id)).rejects.toBeInstanceOf(NotFoundError);
   });

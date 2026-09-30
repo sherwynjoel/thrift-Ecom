@@ -5,15 +5,16 @@ import { zodFieldErrors } from "@/server/action-result";
 import { ConflictError, NotFoundError, PaymentError, StockChangedError, ValidationError, type StockIssue } from "@/server/errors";
 import { getPaymentProvider, type PaymentProvider, type ProviderName } from "@/server/payments";
 import { quote } from "@/server/services/promotions";
-import { addOrderEvent, orderWithItems, toOrderSummary, toOrderView, type OrderSummary, type OrderView, type Tx } from "@/server/services/order-records";
+import { addOrderEvent, flagAttentionOnce, orderWithItems, toOrderSummary, toOrderView, type OrderSummary, type OrderView, type Tx } from "@/server/services/order-records";
 import { notifyOrder } from "@/server/services/notifications";
+import { getSettings } from "@/server/services/settings";
+import { lockUser } from "@/server/db-locks";
 import type { Page } from "@/server/services/catalog";
-import { canCancel, isPaidStatus, ORDER_STATUS_LABEL, PAID_STATUSES, TO_SHIP_STATUSES, type OrderEventType } from "@/lib/order-status";
+import { canCancel, isPaidStatus, ORDER_STATUS_LABEL, PAID_STATUSES, type OrderEventType } from "@/lib/order-status";
+import { invoiceSnapshotFrom } from "@/lib/invoice-snapshot";
 import { formatPaise } from "@/lib/money";
 import { variantImageUrl } from "@/lib/variant-image";
 import { COUPON_UNAVAILABLE, type PricingLine } from "@/lib/pricing";
-
-export { variantImageUrl };
 
 export const ORDER_TTL_MS = 30 * 60 * 1000;
 export const MIN_ORDER_PAISE = 100;
@@ -116,11 +117,6 @@ function snapshot(l: CheckoutLineRow) {
 /** Stable lock/decrement order for any list of {variantId}: avoids 40P01 deadlocks between two transactions touching the same variants in opposite orders. */
 function byVariantId<T extends { variantId: string | null }>(items: T[]): T[] {
   return [...items].sort((a, b) => (a.variantId ?? "").localeCompare(b.variantId ?? ""));
-}
-
-/** Serializes concurrent `placeOrder` calls for the same user (double submit, two tabs) behind one row lock. */
-async function lockUser(tx: Tx, userId: string): Promise<void> {
-  await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
 }
 
 /**
@@ -393,16 +389,17 @@ export async function placeOrder(userId: string, input: unknown): Promise<Checko
  * expiry, could not re-reserve" path in `markOrderPaid`) makes this exactly-once and prevents
  * phantom stock: an order that was marked PAID without ever re-taking its stock must not hand stock
  * back on a later cancel/refund, and an order already restocked once must not be restocked again.
- * Shared by `releaseOrder` (cancel/expire, below) and Task 9's `refundOrder` — the only two places
- * stock is ever put back.
+ * Shared by `releaseOrder` (expire/supersede), `cancelOrder` and Task 9's `refundOrder` — the only
+ * places stock is ever put back. Returns whether this call actually restocked.
  */
-export async function restockOrderItems(tx: Tx, orderId: string): Promise<void> {
+export async function restockOrderItems(tx: Tx, orderId: string): Promise<boolean> {
   const flip = await tx.order.updateMany({ where: { id: orderId, stockReserved: true }, data: { stockReserved: false } });
-  if (flip.count !== 1) return;
+  if (flip.count !== 1) return false;
   const items = await tx.orderItem.findMany({ where: { orderId, variantId: { not: null } }, select: { variantId: true, quantity: true } });
   for (const it of byVariantId(items)) {
     await tx.productVariant.updateMany({ where: { id: it.variantId! }, data: { stock: { increment: it.quantity } } });
   }
+  return true;
 }
 
 async function releaseOrderTx(
@@ -430,33 +427,49 @@ export async function expireStaleOrders(now: Date = new Date()): Promise<number>
   return expired;
 }
 
-export async function cancelOrder(orderId: string, opts: { actorId?: string | null; reason?: string } = {}): Promise<void> {
-  const order = await db.order.findUnique({ where: { id: orderId }, select: { status: true } });
-  if (!order) throw new NotFoundError("Order");
-  if (!canCancel(order.status)) throw new ConflictError(`A ${ORDER_STATUS_LABEL[order.status].toLowerCase()} order cannot be cancelled`);
+export interface CancelResult {
+  /** Stock actually went back on sale (false when the order held none, e.g. it was paid after expiry while short). */
+  restocked: boolean;
+  /** The order had a captured payment: it is now flagged "refund pending" until Refund / Mark refunded. */
+  refundPending: boolean;
+}
+
+/**
+ * Cancels an order before it ships. Locks the order row first (restockOrderItems then touches the
+ * variants, sorted), so the status read here and the guarded transition can't disagree with a
+ * concurrent markOrderPaid. Cancelling never moves money: when the order was paid (a captured
+ * payment on record) it is flagged for attention "refund pending" in the same transaction (I1), so a
+ * forgotten Refund click can't leave the customer's money captured with nothing tracking it.
+ * refundOrder / markRefundedManually clear the flag.
+ */
+export async function cancelOrder(orderId: string, opts: { actorId?: string | null; reason?: string } = {}): Promise<CancelResult> {
   const reason = opts.reason?.trim();
-  const ok = await releaseOrder(orderId, ["PENDING_PAYMENT", ...TO_SHIP_STATUSES], "CANCELLED", "STATUS_CHANGED", `Cancelled${reason ? `: ${reason}` : ""}; stock restocked`, opts.actorId);
-  if (!ok) throw new ConflictError("This order just changed. Reload and try again.");
+  const result = await db.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<{ status: OrderStatus; providerPaymentId: string | null; totalPaise: number }[]>`
+      SELECT status, "providerPaymentId", "totalPaise" FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+    const o = rows[0];
+    if (!o) throw new NotFoundError("Order");
+    if (!canCancel(o.status)) throw new ConflictError(`A ${ORDER_STATUS_LABEL[o.status].toLowerCase()} order cannot be cancelled`);
+    const u = await tx.order.updateMany({ where: { id: orderId, status: o.status }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+    if (u.count !== 1) throw new ConflictError("This order just changed. Reload and try again.");
+    const restocked = await restockOrderItems(tx, orderId);
+    const stockNote = restocked ? "stock restocked" : "no stock to restock (the order held none)";
+    await addOrderEvent(tx, orderId, "STATUS_CHANGED", `Cancelled${reason ? `: ${reason}` : ""}; ${stockNote}`, opts.actorId);
+    const refundPending = isPaidStatus(o.status) && Boolean(o.providerPaymentId);
+    if (refundPending) {
+      const message = `Cancelled after payment: refund ${formatPaise(o.totalPaise)} pending (payment ${o.providerPaymentId}). Use Refund, or Mark refunded if it was refunded in the payment dashboard.`;
+      if (!(await flagAttentionOnce(orderId, message, { tx, actorId: opts.actorId }))) {
+        // Already flagged for something else: the refund reminder still goes on the timeline.
+        await addOrderEvent(tx, orderId, "NOTE", message, opts.actorId);
+      }
+    }
+    return { restocked, refundPending };
+  });
   await notifyOrder(orderId, "cancelled");
+  return result;
 }
 
 class ReReserveFailed extends Error {}
-
-/**
- * Flags an order for attention exactly once: the update only takes effect while `needsAttention`
- * is still false, so two concurrent callers (a webhook and a client verify racing, or a repeated
- * webhook retry) can't both write an ATTENTION event. Returns whether this call was the one that
- * flagged it.
- */
-async function flagAttentionOnce(orderId: string, message: string, inTx?: Tx): Promise<boolean> {
-  const run = async (tx: Tx) => {
-    const u = await tx.order.updateMany({ where: { id: orderId, needsAttention: false }, data: { needsAttention: true } });
-    if (u.count !== 1) return false;
-    await addOrderEvent(tx, orderId, "ATTENTION", message);
-    return true;
-  };
-  return inTx ? run(inTx) : db.$transaction(run);
-}
 
 /**
  * Records a payment id against an order (money arrived that the order can no longer account for in
@@ -517,7 +530,7 @@ async function recordSecondPayment(orderId: string, paymentId: string, provider:
       select: { id: true },
     });
     if (seen) return;
-    if (await flagAttentionOnce(orderId, message, tx)) return;
+    if (await flagAttentionOnce(orderId, message, { tx })) return;
     await addOrderEvent(tx, orderId, "NOTE", message);
   });
 }
@@ -551,7 +564,14 @@ export async function markOrderPaid(
     }
     return { outcome: "already_paid", number };
   }
-  if (order.status === "REFUNDED") return { outcome: "already_paid", number };
+  if (order.status === "REFUNDED") {
+    // A different captured payment after the refund is new money that nothing else tracks (M1).
+    if (order.providerPaymentId && order.providerPaymentId !== paymentId) {
+      await recordSecondPayment(order.id, paymentId, order.paymentProvider);
+      return { outcome: "attention", number };
+    }
+    return { outcome: "already_paid", number };
+  }
 
   // `null` = the source reported a payment but no amount (never trusted as a match).
   if (opts.amountPaise !== undefined && opts.amountPaise !== order.totalPaise) {
@@ -560,7 +580,11 @@ export async function markOrderPaid(
     return { outcome: "amount_mismatch", number };
   }
 
-  const paid = { status: "PAID" as const, paidAt: new Date(), providerPaymentId: paymentId };
+  // The invoice's seller/GST inputs are frozen with the PAID transition (I3): changing store settings
+  // later never rewrites an invoice that was already issued.
+  const paidAt = new Date();
+  const invoiceSnapshot = { ...invoiceSnapshotFrom(await getSettings(), paidAt) } satisfies Prisma.InputJsonObject;
+  const paid = { status: "PAID" as const, paidAt, providerPaymentId: paymentId, invoiceSnapshot };
 
   if (order.status === "PENDING_PAYMENT") {
     const won = await db.$transaction(async (tx) => {
@@ -644,6 +668,11 @@ export async function getOrderForUser(userId: string, number: string): Promise<O
   const o = await db.order.findFirst({ where: { number, userId }, include: orderWithItems });
   if (!o) throw new NotFoundError("Order");
   return toOrderView(o);
+}
+
+/** Whether a failed payment attempt is on the order's timeline (see pendingPaymentMode). */
+export async function hasFailedPaymentAttempt(orderId: string): Promise<boolean> {
+  return (await db.orderEvent.count({ where: { orderId, type: "PAYMENT_FAILED" } })) > 0;
 }
 
 export async function listOrdersForUser(userId: string, opts: { page?: number; pageSize?: number } = {}): Promise<Page<OrderSummary>> {

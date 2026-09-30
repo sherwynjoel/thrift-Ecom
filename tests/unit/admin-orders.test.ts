@@ -124,6 +124,18 @@ describe("admin order actions", () => {
     expect(await countToShip()).toBe(1);
   });
 
+  it("keeps a cancelled paid order flagged until it is refunded, then clears it without restocking twice (I1)", async () => {
+    const a = await paidOrder(2);
+    expect(await adminCancelOrder(a.orderId, "Print defect", null)).toEqual({ restocked: true, refundPending: true });
+    expect(await stockOf(a.variantId)).toBe(5);
+    expect((await listAdminOrders({ attention: true, tab: "all" })).items.map((r) => r.id)).toEqual([a.orderId]);
+    expect((await getAdminOrder(a.orderId)).needsAttention).toBe(true);
+    await refundOrder(a.orderId, null);
+    const o = await db.order.findUniqueOrThrow({ where: { id: a.orderId } });
+    expect(o).toMatchObject({ status: "REFUNDED", needsAttention: false });
+    expect(await stockOf(a.variantId)).toBe(5);
+  });
+
   it("cancels before shipping with restock, and refuses once shipped", async () => {
     const a = await paidOrder(2);
     await adminCancelOrder(a.orderId, "Customer asked", null);
@@ -303,9 +315,17 @@ describe("admin order actions", () => {
       await markRefundedManually(b.orderId, "Refunded in dashboard", null);
       expect(await stockOf(b.variantId)).toBe(4);
 
+      // A cancelled order with a captured payment can be marked refunded too (M5); cancel already restocked.
       const c = await paidOrder(1);
       await adminCancelOrder(c.orderId, "", null);
-      await expect(markRefundedManually(c.orderId, "Refunded in dashboard", null)).rejects.toBeInstanceOf(ConflictError);
+      expect(await stockOf(c.variantId)).toBe(5);
+      await markRefundedManually(c.orderId, "Refunded in dashboard", null);
+      expect(await db.order.findUniqueOrThrow({ where: { id: c.orderId } })).toMatchObject({ status: "REFUNDED", needsAttention: false });
+      expect(await stockOf(c.variantId)).toBe(5);
+      // …but not one that was never paid.
+      const u = await createUser();
+      const unpaid = await createOrderRow(u.id, { status: "CANCELLED", paidAt: null });
+      await expect(markRefundedManually(unpaid.id, "Refunded in dashboard", null)).rejects.toBeInstanceOf(ConflictError);
     } finally {
       provider.refund = origRefund;
     }

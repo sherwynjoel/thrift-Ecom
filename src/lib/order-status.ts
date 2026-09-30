@@ -41,3 +41,22 @@ export function nextFulfilmentStatus(s: OrderStatus): FulfilmentStatus | null {
   const i = CHAIN.indexOf(s);
   return i >= 0 && i < CHAIN.length - 1 ? (CHAIN[i + 1] as FulfilmentStatus) : null;
 }
+
+/**
+ * Money to give back (Refund and Mark refunded): a paid order, or a cancelled one whose payment was
+ * captured — cancelling never refunds by itself.
+ */
+export function canRefund(s: OrderStatus, providerPaymentId: string | null): boolean {
+  return isPaidStatus(s) || (s === "CANCELLED" && Boolean(providerPaymentId));
+}
+
+/**
+ * What an unpaid, unexpired order's page offers (M4). Retry only when the shopper's last attempt is
+ * known to have ended without payment: they came back from a failed or dismissed payment window, or a
+ * failed payment is on the order's timeline. Otherwise a payment may still be being confirmed, so the
+ * page shows "Confirming your payment" with Check again, never a second Pay button (double charge).
+ */
+export function pendingPaymentMode(paymentParam: string | string[] | undefined, hasFailedAttempt: boolean): "retry" | "confirming" {
+  const p = Array.isArray(paymentParam) ? paymentParam[0] : paymentParam;
+  return p === "failed" || p === "dismissed" || hasFailedAttempt ? "retry" : "confirming";
+}

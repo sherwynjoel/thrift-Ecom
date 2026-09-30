@@ -614,6 +614,20 @@ describe("markOrderPaid", () => {
     expect(await stockOf(variant.id)).toBe(3);
   });
 
+  it("flags a different captured payment that arrives after the order was refunded (M1), once", async () => {
+    const { user, address } = await buyer();
+    const p = await placeOrder(user.id, { addressId: address.id });
+    await markOrderPaid(p.orderId, "pay_1", "client");
+    await db.order.update({ where: { id: p.orderId }, data: { status: "REFUNDED", refundedAt: new Date() } });
+    // The refunded payment itself again: silent.
+    expect((await markOrderPaid(p.orderId, "pay_1", "webhook")).outcome).toBe("already_paid");
+    expect((await markOrderPaid(p.orderId, "pay_2", "webhook")).outcome).toBe("attention");
+    expect((await markOrderPaid(p.orderId, "pay_2", "reconcile")).outcome).toBe("attention");
+    const o = await db.order.findUniqueOrThrow({ where: { id: p.orderId }, include: { events: true } });
+    expect(o).toMatchObject({ status: "REFUNDED", providerPaymentId: "pay_1", needsAttention: true });
+    expect(o.events.filter((e) => e.message.includes("pay_2")).map((e) => e.type)).toEqual(["ATTENTION"]);
+  });
+
   it("resolves a concurrent client+webhook payment to exactly one PAID transition", async () => {
     const { user, variant, address } = await buyer({ qty: 2 });
     const p = await placeOrder(user.id, { addressId: address.id });
@@ -661,6 +675,48 @@ describe("expiry and cancel", () => {
     const pq = await placeOrder(q.user.id, { addressId: q.address.id });
     await db.order.update({ where: { id: pq.orderId }, data: { status: "SHIPPED" } });
     await expect(cancelOrder(pq.orderId)).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("flags a cancelled paid order 'refund pending' in the same step, and not an unpaid one (I1)", async () => {
+    const { user, variant, address } = await buyer({ qty: 2 });
+    const p = await placeOrder(user.id, { addressId: address.id });
+    await markOrderPaid(p.orderId, "pay_1", "client");
+    expect(await cancelOrder(p.orderId, { reason: "Print defect" })).toEqual({ restocked: true, refundPending: true });
+    expect(await stockOf(variant.id)).toBe(5);
+    const o = await db.order.findUniqueOrThrow({ where: { id: p.orderId }, include: { events: true } });
+    expect(o).toMatchObject({ status: "CANCELLED", needsAttention: true, providerPaymentId: "pay_1" });
+    expect(o.events.find((e) => e.type === "ATTENTION")?.message).toBe(
+      "Cancelled after payment: refund ₹1,198 pending (payment pay_1). Use Refund, or Mark refunded if it was refunded in the payment dashboard.",
+    );
+    expect(o.events.find((e) => e.type === "STATUS_CHANGED")?.message).toBe("Cancelled: Print defect; stock restocked");
+
+    const q = await buyer();
+    const pq = await placeOrder(q.user.id, { addressId: q.address.id });
+    expect(await cancelOrder(pq.orderId)).toEqual({ restocked: true, refundPending: false });
+    expect(await db.order.findUniqueOrThrow({ where: { id: pq.orderId } })).toMatchObject({ status: "CANCELLED", needsAttention: false });
+  });
+
+  it("still records the pending refund when a paid order being cancelled was already flagged for something else", async () => {
+    const { user, address } = await buyer();
+    const p = await placeOrder(user.id, { addressId: address.id });
+    await markOrderPaid(p.orderId, "pay_1", "client");
+    await db.order.update({ where: { id: p.orderId }, data: { needsAttention: true } });
+    await cancelOrder(p.orderId);
+    const o = await db.order.findUniqueOrThrow({ where: { id: p.orderId }, include: { events: true } });
+    expect(o.needsAttention).toBe(true);
+    expect(o.events.filter((e) => e.message.startsWith("Cancelled after payment")).map((e) => e.type)).toEqual(["NOTE"]);
+  });
+
+  it("says so when a cancelled order had no stock to put back (M10)", async () => {
+    const { user, variant, address } = await buyer({ qty: 2 });
+    const p = await placeOrder(user.id, { addressId: address.id });
+    await expireStaleOrders(later());
+    await db.productVariant.update({ where: { id: variant.id }, data: { stock: 1 } });
+    await markOrderPaid(p.orderId, "pay_late", "webhook"); // paid after expiry, stock short → stockReserved false
+    expect(await cancelOrder(p.orderId)).toEqual({ restocked: false, refundPending: true });
+    expect(await stockOf(variant.id)).toBe(1);
+    const o = await db.order.findUniqueOrThrow({ where: { id: p.orderId }, include: { events: true } });
+    expect(o.events.find((e) => e.type === "STATUS_CHANGED")?.message).toBe("Cancelled; no stock to restock (the order held none)");
   });
 
   it("runs two expiry sweeps concurrently without double-restocking", async () => {

@@ -256,6 +256,9 @@ model Order {
   trackingUrl       String?
   adminNote         String?
   customerNote      String?
+  // Seller and GST inputs frozen when the order became PAID (markOrderPaid), so an issued invoice never
+  // changes when store settings change later. Null for orders paid before this existed (render from settings).
+  invoiceSnapshot   Json?
   expiresAt         DateTime
   items             OrderItem[]
   events            OrderEvent[]

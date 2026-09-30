@@ -4,14 +4,14 @@ import { zodFieldErrors } from "@/server/action-result";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import { getPaymentProvider, paymentProviderName, type ProviderName } from "@/server/payments";
 import { notifyOrder } from "@/server/services/notifications";
-import { addOrderEvent, orderWithItems, toOrderView, type OrderView } from "@/server/services/order-records";
-import { cancelOrder, restockOrderItems } from "@/server/services/orders";
+import { addOrderEvent, flagAttentionOnce, orderWithItems, toOrderView, type OrderView } from "@/server/services/order-records";
+import { cancelOrder, restockOrderItems, type CancelResult } from "@/server/services/orders";
 import type { Page } from "@/server/services/catalog";
 import { carrierById, trackingUrlFor } from "@/lib/carriers";
 import { toCsv } from "@/lib/csv";
 import { formatDateTimeIst } from "@/lib/dates";
 import { paiseToRupees } from "@/lib/money";
-import { fulfilmentRank, isPaidStatus, ORDER_STATUS_LABEL, PAID_STATUSES, TO_SHIP_STATUSES, type FulfilmentStatus } from "@/lib/order-status";
+import { canRefund, fulfilmentRank, ORDER_STATUS_LABEL, PAID_STATUSES, TO_SHIP_STATUSES, type FulfilmentStatus } from "@/lib/order-status";
 import { ORDER_TABS, type OrderTab } from "@/lib/order-tabs";
 import { adminNoteSchema, cancelReasonSchema, fulfilmentStatusSchema, manualRefundNoteSchema, trackingInputSchema } from "@/lib/validation/orders";
 
@@ -198,15 +198,11 @@ export async function bulkMarkProcessing(ids: string[], actorId: string | null):
   return n;
 }
 
-/** Cancel is allowed only before SHIPPED (canCancel); cancelOrder locks the order row, then restocks variants sorted by id, exactly once. */
-export async function adminCancelOrder(id: string, reason: unknown, actorId: string | null): Promise<void> {
+/** Cancel is allowed only before SHIPPED (canCancel); cancelOrder locks the order row, then restocks variants sorted by id, exactly once, and flags a paid order "refund pending". */
+export async function adminCancelOrder(id: string, reason: unknown, actorId: string | null): Promise<CancelResult> {
   const parsed = cancelReasonSchema.safeParse(reason ?? "");
   if (!parsed.success) throw new ValidationError({ reason: parsed.error.issues.map((i) => i.message) });
-  await cancelOrder(id, { actorId, reason: parsed.data });
-}
-
-function canRefund(o: { status: OrderStatus; providerPaymentId: string | null }): boolean {
-  return isPaidStatus(o.status) || (o.status === "CANCELLED" && Boolean(o.providerPaymentId));
+  return cancelOrder(id, { actorId, reason: parsed.data });
 }
 
 function configuredProvider(): ProviderName | null {
@@ -233,13 +229,10 @@ class ProviderRefundFailed extends Error {
   }
 }
 
-/** Flags the order and writes the ATTENTION event only when the flag flips false → true (same semantics as orders.ts flagAttentionOnce). */
-async function flagAttentionOnce(id: string, message: string, actorId: string | null): Promise<void> {
+/** flagAttentionOnce that never throws: used on a failure path whose own error must still reach the admin. */
+async function flagAttentionSafely(id: string, message: string, actorId: string | null): Promise<void> {
   try {
-    await db.$transaction(async (tx) => {
-      const u = await tx.order.updateMany({ where: { id, needsAttention: false }, data: { needsAttention: true } });
-      if (u.count === 1) await addOrderEvent(tx, id, "ATTENTION", message, actorId);
-    });
+    await flagAttentionOnce(id, message, { actorId });
   } catch (err) {
     console.error("[admin-orders] could not flag attention", id, err);
   }
@@ -273,7 +266,7 @@ export async function refundOrder(id: string, actorId: string | null): Promise<{
         SELECT status, "providerPaymentId", "paymentProvider", "totalPaise", "stockReserved" FROM "Order" WHERE id = ${id} FOR UPDATE`;
       const o = rows[0];
       if (!o) throw new NotFoundError("Order");
-      if (!canRefund(o)) {
+      if (!canRefund(o.status, o.providerPaymentId)) {
         throw new ConflictError(o.status === "REFUNDED" ? "This order is already refunded" : "Only paid orders can be refunded");
       }
 
@@ -317,7 +310,7 @@ export async function refundOrder(id: string, actorId: string | null): Promise<{
       throw new ConflictError(`${what} but the order could not be updated. Reload and refund again to record it.`);
     }
     if (err instanceof ProviderRefundFailed) {
-      await flagAttentionOnce(
+      await flagAttentionSafely(
         id,
         `Refund attempt failed or timed out (${err.message.slice(0, 200)}). Check the payment dashboard before retrying; if it was refunded there, use "Mark refunded".`,
         actorId,
@@ -330,18 +323,19 @@ export async function refundOrder(id: string, actorId: string | null): Promise<{
 
 /**
  * Records a refund that was made directly in the payment dashboard (e.g. after a timed-out refund
- * attempt), without calling the provider. A note is required. Restocks only unshipped orders, via
- * restockOrderItems after the order row lock.
+ * attempt), without calling the provider. A note is required. Accepts the same orders as refundOrder:
+ * paid ones, and cancelled ones with a captured payment (M5; no restock — cancel already released the
+ * stock). Restocks only unshipped orders, via restockOrderItems after the order row lock.
  */
 export async function markRefundedManually(id: string, note: unknown, actorId: string | null): Promise<void> {
   const parsed = manualRefundNoteSchema.safeParse(note);
   if (!parsed.success) throw new ValidationError({ note: parsed.error.issues.map((i) => i.message) });
   await db.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<{ status: OrderStatus; stockReserved: boolean }[]>`
-      SELECT status, "stockReserved" FROM "Order" WHERE id = ${id} FOR UPDATE`;
+    const rows = await tx.$queryRaw<{ status: OrderStatus; stockReserved: boolean; providerPaymentId: string | null }[]>`
+      SELECT status, "stockReserved", "providerPaymentId" FROM "Order" WHERE id = ${id} FOR UPDATE`;
     const o = rows[0];
     if (!o) throw new NotFoundError("Order");
-    if (!isPaidStatus(o.status)) {
+    if (!canRefund(o.status, o.providerPaymentId)) {
       throw new ConflictError(o.status === "REFUNDED" ? "This order is already refunded" : "Only paid orders can be marked refunded");
     }
     const restock = isToShip(o.status) && o.stockReserved;

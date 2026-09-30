@@ -2,6 +2,7 @@ import type { OrderStatus, Prisma } from "@prisma/client";
 import { db } from "@/server/db";
 import { NotFoundError } from "@/server/errors";
 import type { OrderEventType } from "@/lib/order-status";
+import { parseInvoiceSnapshot, type InvoiceSnapshot } from "@/lib/invoice-snapshot";
 
 export type Tx = Prisma.TransactionClient;
 
@@ -18,6 +19,8 @@ export interface OrderView {
   paymentProvider: string; providerOrderId: string | null; providerPaymentId: string | null;
   carrier: string | null; trackingNumber: string | null; trackingUrl: string | null; customerNote: string | null;
   ship: ShipAddress; items: OrderItemView[]; itemCount: number;
+  /** Seller/GST inputs frozen when the order was paid; null for orders paid before snapshots existed (see invoiceInputsFor). */
+  invoiceSnapshot: InvoiceSnapshot | null;
 }
 export interface OrderSummary {
   id: string; number: string; status: OrderStatus; createdAt: Date; paidAt: Date | null; totalPaise: number;
@@ -41,6 +44,7 @@ export function toOrderView(o: OrderRow): OrderView {
       imageUrl: i.imageUrl, sku: i.sku, unitPricePaise: i.unitPricePaise, quantity: i.quantity, lineTotalPaise: i.lineTotalPaise,
     })),
     itemCount: o.items.reduce((s, i) => s + i.quantity, 0),
+    invoiceSnapshot: parseInvoiceSnapshot(o.invoiceSnapshot),
   };
 }
 
@@ -61,6 +65,22 @@ export function orderDiscountLabel(o: { couponCode: string | null; offerLabel: s
 
 export async function addOrderEvent(tx: Tx, orderId: string, type: OrderEventType, message: string, actorId?: string | null): Promise<void> {
   await tx.orderEvent.create({ data: { orderId, type, message: message.slice(0, 1000), actorId: actorId ?? null } });
+}
+
+/**
+ * Flags an order for attention exactly once: the update only takes effect while `needsAttention` is
+ * still false, so concurrent callers (a webhook and a client verify racing, a webhook retry, two
+ * failed refund attempts) can't both write an ATTENTION event. Runs inside `tx` when given, else in
+ * its own transaction. Returns whether this call was the one that flagged it.
+ */
+export async function flagAttentionOnce(orderId: string, message: string, opts: { tx?: Tx; actorId?: string | null } = {}): Promise<boolean> {
+  const run = async (tx: Tx) => {
+    const u = await tx.order.updateMany({ where: { id: orderId, needsAttention: false }, data: { needsAttention: true } });
+    if (u.count !== 1) return false;
+    await addOrderEvent(tx, orderId, "ATTENTION", message, opts.actorId);
+    return true;
+  };
+  return opts.tx ? run(opts.tx) : db.$transaction(run);
 }
 
 export async function getOrderById(id: string): Promise<OrderView> {

@@ -117,6 +117,22 @@ describe("abandoned-cart", () => {
     expect(await runAbandonedCart()).toEqual({ sent: 0 });
   });
 
+  it("scans carts in a deterministic order, least recently updated first (M3)", async () => {
+    const orig = db.cart.findMany;
+    const seen: unknown[] = [];
+    db.cart.findMany = ((args: unknown) => {
+      seen.push(args);
+      return orig.call(db.cart, args as never);
+    }) as typeof db.cart.findMany;
+    try {
+      await shopperWithBag(5);
+      await runAbandonedCart();
+    } finally {
+      db.cart.findMany = orig;
+    }
+    expect(seen[0]).toMatchObject({ orderBy: [{ updatedAt: "asc" }, { id: "asc" }], take: 500 });
+  });
+
   it("respects the setting", async () => {
     await settings({ abandonedCartEnabled: false });
     await shopperWithBag(5);
@@ -209,6 +225,28 @@ describe("reconcile-payments", () => {
     expect(await runReconcilePayments(new Date(), provider)).toEqual({ checked: 2, paid: 1, attention: 0, errors: 1 });
     expect((await db.order.findUniqueOrThrow({ where: { id: fine.placed.orderId } })).status).toBe("PAID");
     expect((await db.order.findUniqueOrThrow({ where: { id: broken.placed.orderId } })).status).toBe("PENDING_PAYMENT");
+  });
+
+  it("finds a captured payment on an order cancelled while its payment window was open (M2), once", async () => {
+    const { placed } = await pendingOrder();
+    await db.order.update({ where: { id: placed.orderId }, data: { status: "CANCELLED", cancelledAt: new Date() } });
+    const { provider, calls } = stubProvider({ [placed.providerOrderId]: [{ id: "pay_lost", amountPaise: placed.amountPaise, status: "captured" }] });
+    expect(await runReconcilePayments(new Date(), provider)).toEqual({ checked: 1, paid: 0, attention: 1, errors: 0 });
+    expect(calls).toEqual([placed.providerOrderId]);
+    expect(await db.order.findUniqueOrThrow({ where: { id: placed.orderId } })).toMatchObject({ status: "CANCELLED", providerPaymentId: "pay_lost", needsAttention: true });
+    // Recorded: the order leaves the scan, so later runs don't re-check it.
+    expect(await runReconcilePayments(new Date(), provider)).toEqual({ checked: 0, paid: 0, attention: 0, errors: 0 });
+  });
+
+  it("checks the newest unpaid orders first, so a backlog never starves them (M3)", async () => {
+    const older = await pendingOrder();
+    const newer = await pendingOrder();
+    const oldest = await pendingOrder();
+    await db.order.update({ where: { id: older.placed.orderId }, data: { createdAt: new Date(Date.now() - 2 * HOUR) } });
+    await db.order.update({ where: { id: oldest.placed.orderId }, data: { createdAt: new Date(Date.now() - 5 * HOUR) } });
+    const { provider, calls } = stubProvider({});
+    await runReconcilePayments(new Date(), provider);
+    expect(calls).toEqual([newer.placed.providerOrderId, older.placed.providerOrderId, oldest.placed.providerOrderId]);
   });
 
   it("is registered as a cron job and uses the mock provider by default (no payments)", async () => {

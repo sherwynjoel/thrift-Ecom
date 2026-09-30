@@ -4,6 +4,7 @@ import { sendEmailSafely } from "@/server/services/notifications";
 import { getSettings } from "@/server/services/settings";
 
 const HOUR = 3_600_000;
+export const ABANDONED_CART_BATCH = 500;
 
 export async function runAbandonedCart(now: Date = new Date()): Promise<{ sent: number; reason?: "disabled" }> {
   const s = await getSettings();
@@ -16,7 +17,10 @@ export async function runAbandonedCart(now: Date = new Date()): Promise<{ sent: 
       user: { select: { email: true, name: true } },
       items: { include: { variant: { include: { product: { select: { name: true, status: true } } } } } },
     },
-    take: 500,
+    // Deterministic batches: least recently touched carts first, so a cart is never skipped forever
+    // behind others (M3). Reminded carts leave the query (remindedAt), so the next run moves on.
+    orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
+    take: ABANDONED_CART_BATCH,
   });
   let sent = 0;
   for (const c of carts) {

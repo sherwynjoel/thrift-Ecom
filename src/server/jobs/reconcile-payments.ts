@@ -4,6 +4,7 @@ import { markOrderPaid } from "@/server/services/orders";
 
 const HOUR = 3_600_000;
 export const RECONCILE_WINDOW_MS = 48 * HOUR;
+export const RECONCILE_BATCH = 200;
 
 export interface ReconcileResult {
   checked: number;
@@ -22,13 +23,21 @@ export interface ReconcileResult {
 export async function runReconcilePayments(now: Date = new Date(), provider: PaymentProvider = getPaymentProvider()): Promise<ReconcileResult> {
   const orders = await db.order.findMany({
     where: {
-      status: { in: ["PENDING_PAYMENT", "EXPIRED"] },
+      OR: [
+        { status: { in: ["PENDING_PAYMENT", "EXPIRED"] } },
+        // Cancelled while the payment window was still open (M2): a capture that lost its webhook would
+        // otherwise go unnoticed. markOrderPaid records it and flags the order; once the payment id is
+        // stored the order drops out of this query.
+        { status: "CANCELLED", providerPaymentId: null },
+      ],
       providerOrderId: { not: null },
       createdAt: { gte: new Date(now.getTime() - RECONCILE_WINDOW_MS), lte: now },
     },
     select: { id: true, number: true, providerOrderId: true },
-    orderBy: { createdAt: "asc" },
-    take: 200,
+    // Newest first (M3): with more than RECONCILE_BATCH candidates, the freshest orders (the ones a
+    // shopper is waiting on) are never starved by a backlog of old unpaid ones.
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: RECONCILE_BATCH,
   });
   const result: ReconcileResult = { checked: 0, paid: 0, attention: 0, errors: 0 };
   for (const o of orders) {

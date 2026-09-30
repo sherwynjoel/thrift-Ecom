@@ -2,29 +2,41 @@ import { BRAND } from "@/config/brand";
 import { addressLines, formatPhone } from "@/lib/address-format";
 import { formatDateIst } from "@/lib/dates";
 import { invoiceFromOrder } from "@/lib/gst";
+import { invoiceInputsFor } from "@/lib/invoice-snapshot";
 import { formatPaise } from "@/lib/money";
 import type { OrderView } from "@/server/services/order-records";
 import type { StoreSettings } from "@/server/services/settings";
 
 const rupees = (p: number) => (p / 100).toFixed(2);
 
-/** `last` marks the final document in a print run: every other one forces a page break after itself. */
+/**
+ * `last` marks the final document in a print run: every other one forces a page break after itself.
+ * Seller and GST details come from the order's snapshot taken when it was paid (I3); `settings` is
+ * only the fallback for orders paid before snapshots existed.
+ */
 export function InvoiceDocument({ order, settings, last = false }: { order: OrderView; settings: StoreSettings; last?: boolean }) {
-  const inv = invoiceFromOrder(order, settings);
-  const title = settings.gstin ? "Tax Invoice" : "Invoice";
+  const seller = invoiceInputsFor(order, settings);
+  const inv = invoiceFromOrder(order, seller);
+  const title = seller.gstin ? "Tax Invoice" : "Invoice";
+  const refunded = order.status === "REFUNDED";
   return (
     <article className={`print-page${last ? " print-page-last" : ""} mx-auto w-full max-w-[210mm] bg-white p-6 text-[12px] leading-snug text-black sm:p-10`} data-testid="invoice">
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-black/20 pb-4">
         <div>
-          <p className="text-xl font-bold uppercase">{settings.sellerName || BRAND.name}</p>
-          <p className="whitespace-pre-line">{settings.sellerAddress}</p>
-          {settings.sellerState && <p>State: {settings.sellerState}</p>}
-          {settings.gstin && <p>GSTIN: {settings.gstin}</p>}
+          <p className="text-xl font-bold uppercase">{seller.sellerName || BRAND.name}</p>
+          <p className="whitespace-pre-line">{seller.sellerAddress}</p>
+          {seller.sellerState && <p>State: {seller.sellerState}</p>}
+          {seller.gstin && <p>GSTIN: {seller.gstin}</p>}
         </div>
         <div className="text-right">
           <p className="text-lg font-bold">{title}</p>
+          {refunded && (
+            <p className="my-1 inline-block border-2 border-black px-2 py-0.5 text-base font-bold tracking-widest" data-testid="invoice-refunded">
+              REFUNDED
+            </p>
+          )}
           <p>Invoice no: {order.number}</p>
-          <p>Date: {formatDateIst(order.paidAt ?? order.createdAt)}</p>
+          <p>Date: {formatDateIst(seller.invoiceDate)}</p>
           <p>Place of supply: {order.ship.state}</p>
         </div>
       </header>
@@ -70,6 +82,11 @@ export function InvoiceDocument({ order, settings, last = false }: { order: Orde
         </table>
       </div>
       <p className="mt-4 text-right text-base font-bold">Amount paid: {formatPaise(order.totalPaise)}</p>
+      {refunded && (
+        <p className="text-right text-base font-bold">
+          Refunded{order.refundedAt ? ` on ${formatDateIst(order.refundedAt)}` : ""}: {formatPaise(order.totalPaise)}
+        </p>
+      )}
       <footer className="mt-6 space-y-1 border-t border-black/20 pt-3 text-black/70">
         <p>All prices are inclusive of GST. Amounts in ₹.</p>
         {order.providerPaymentId && <p>Payment reference: {order.providerPaymentId}</p>}

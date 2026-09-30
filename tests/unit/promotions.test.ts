@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/server/db";
 import { resetDb } from "../helpers/db";
 import { createOrderRow, createUser } from "../helpers/fixtures";
-import { couponUses, getLiveOffers, normalizeCouponCode, quote, UNKNOWN_COUPON } from "@/server/services/promotions";
+import { couponUses, getLiveOffers, normalizeCouponCode, quote } from "@/server/services/promotions";
+import { COUPON_UNAVAILABLE } from "@/lib/pricing";
 
 const lines = [{ unitPricePaise: 59900, quantity: 2, collectionIds: ["c1"] }];
 
@@ -15,7 +16,7 @@ describe("promotions service", () => {
 
   it("reports unknown codes and applies known ones case-insensitively", async () => {
     const unknown = await quote({ lines, couponCode: "nope", userId: null });
-    expect(unknown).toMatchObject({ couponError: UNKNOWN_COUPON, applied: null });
+    expect(unknown).toMatchObject({ couponError: COUPON_UNAVAILABLE, applied: null });
     await db.coupon.create({ data: { code: "SAVE10", type: "PERCENT", value: 10 } });
     const r = await quote({ lines, couponCode: "save10", userId: null });
     expect(r).toMatchObject({ applied: "coupon", discountPaise: 11980, coupon: { code: "SAVE10" } });

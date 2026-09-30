@@ -7,6 +7,7 @@ import { ValidationError } from "@/server/errors";
 import {
   adminCancelOrder, advanceOrderStatus, BULK_LIMIT, bulkMarkProcessing, clearAttention, markRefundedManually, refundOrder, saveTracking, setAdminNote,
 } from "@/server/services/admin-orders";
+import type { CancelResult } from "@/server/services/orders";
 import type { FulfilmentStatus } from "@/lib/order-status";
 import type { TrackingInput } from "@/lib/validation/orders";
 
@@ -54,12 +55,12 @@ export async function clearAttentionAction(id: string): Promise<ActionResult<nul
   }
 }
 
-export async function cancelOrderAction(id: string, reason: string): Promise<ActionResult<null>> {
+export async function cancelOrderAction(id: string, reason: string): Promise<ActionResult<CancelResult>> {
   try {
     const { userId } = await requireAdmin();
-    await adminCancelOrder(id, reason, userId);
+    const result = await adminCancelOrder(id, reason, userId);
     revalidatePath("/", "layout");
-    return { ok: true, data: null };
+    return { ok: true, data: result };
   } catch (err) {
     return actionError(err);
   }

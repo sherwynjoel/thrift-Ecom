@@ -3,9 +3,6 @@ import { PAID_STATUSES } from "@/lib/order-status";
 import { COUPON_UNAVAILABLE, priceCart, type PriceResult, type PricingCoupon, type PricingLine, type PricingOffer } from "@/lib/pricing";
 import { getSettings } from "@/server/services/settings";
 
-/** Unknown codes get the same message as unusable ones (see COUPON_UNAVAILABLE). */
-export const UNKNOWN_COUPON = COUPON_UNAVAILABLE;
-
 export function normalizeCouponCode(code: string): string {
   return code.trim().toUpperCase();
 }
@@ -52,5 +49,5 @@ export async function quote(args: { lines: PricingLine[]; couponCode?: string | 
   const [settings, offers, coupon] = await Promise.all([getSettings(), getLiveOffers(now), code ? findCoupon(code) : Promise.resolve(null)]);
   const uses = coupon ? await couponUses(coupon.code, args.userId) : { total: 0, byUser: 0 };
   const result = priceCart(args.lines, { offers, coupon, settings, now, couponUsesTotal: uses.total, couponUsesByUser: uses.byUser });
-  return code && !coupon ? { ...result, couponError: UNKNOWN_COUPON } : result;
+  return code && !coupon ? { ...result, couponError: COUPON_UNAVAILABLE /* unknown codes get the same message as unusable ones */ } : result;
 }

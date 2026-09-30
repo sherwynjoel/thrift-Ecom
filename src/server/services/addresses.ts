@@ -1,13 +1,11 @@
-import { Prisma } from "@prisma/client";
 import { db } from "@/server/db";
+import { lockUser } from "@/server/db-locks";
 import { zodFieldErrors } from "@/server/action-result";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import { addressInputSchema } from "@/lib/validation/address";
 import { MAX_ADDRESSES } from "@/lib/address-limits";
 
 export { MAX_ADDRESSES };
-
-type Tx = Prisma.TransactionClient;
 
 export interface AddressView {
   id: string; fullName: string; phone: string; line1: string; line2: string | null; landmark: string | null;
@@ -25,26 +23,15 @@ function parse(input: unknown) {
   return r.data;
 }
 
-// Locks the user's row for the lifetime of the enclosing transaction so that concurrent
-// createAddress/updateAddress/deleteAddress/setDefaultAddress calls for the SAME user are
-// serialized (Postgres blocks a second `FOR UPDATE` on the same row until the first transaction
-// commits). This is what makes the "count < MAX_ADDRESSES" and "at most one default" checks below
-// safe under concurrency — without it, two concurrent requests could both read a stale count/default
-// state and both pass. A partial unique index (`Address_userId_default_key`, see
+// Every mutation below takes lockUser (User row FOR UPDATE) first, so concurrent create/update/
+// delete/setDefault calls for the SAME user are serialized. That is what makes the
+// "count < MAX_ADDRESSES" and "at most one default" checks safe under concurrency. A partial unique
+// index (`Address_userId_default_key`, see
 // prisma/migrations/20260929214720_address_default_partial_unique) backstops the default invariant
 // at the database level in case this lock is ever bypassed.
-async function lockUser(tx: Tx, userId: string): Promise<void> {
-  await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
-}
 
 export async function listAddresses(userId: string): Promise<AddressView[]> {
   return db.address.findMany({ where: { userId }, orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }], select });
-}
-
-export async function getAddress(userId: string, id: string): Promise<AddressView> {
-  const a = await db.address.findFirst({ where: { id, userId }, select });
-  if (!a) throw new NotFoundError("Address");
-  return a;
 }
 
 export async function createAddress(userId: string, input: unknown): Promise<AddressView> {
