@@ -4,6 +4,7 @@ import { db } from "@/server/db";
 import { zodFieldErrors } from "@/server/action-result";
 import { ValidationError } from "@/server/errors";
 import { settingsInputSchema } from "@/lib/validation/settings";
+import { customFeesOf, type CustomFees } from "@/lib/custom-pricing";
 
 export type StoreSettings = StoreSetting;
 
@@ -22,6 +23,10 @@ export async function getSettings(): Promise<StoreSettings> {
     }
     throw err;
   }
+}
+
+export async function getCustomFees(): Promise<CustomFees> {
+  return customFeesOf(await getSettings());
 }
 
 export async function updateSettings(input: unknown): Promise<StoreSettings> {

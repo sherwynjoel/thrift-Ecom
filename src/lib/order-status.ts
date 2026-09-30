@@ -18,7 +18,7 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
 
 export const ORDER_EVENT_TYPES = [
   "CREATED", "PAID", "PAYMENT_FAILED", "STATUS_CHANGED", "NOTE", "EMAIL_SENT", "EMAIL_FAILED",
-  "EXPIRED", "TRACKING_UPDATED", "REFUNDED", "ATTENTION",
+  "EXPIRED", "TRACKING_UPDATED", "REFUNDED", "ATTENTION", "PRINTED",
 ] as const;
 export type OrderEventType = (typeof ORDER_EVENT_TYPES)[number];
 

@@ -20,7 +20,7 @@ export async function getLiveOffers(now: Date = new Date()): Promise<PricingOffe
   });
   return rows.map((o) => ({
     id: o.id, label: o.label, type: o.type, minQty: o.minQty, pricePaise: o.pricePaise, percent: o.percent,
-    collectionId: o.collectionId, active: o.active, startsAt: o.startsAt, endsAt: o.endsAt,
+    collectionId: o.collectionId, active: o.active, startsAt: o.startsAt, endsAt: o.endsAt, includeCustom: o.includeCustom,
   }));
 }
 

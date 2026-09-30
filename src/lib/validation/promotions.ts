@@ -45,6 +45,7 @@ export const offerInputSchema = z
     active: z.boolean(),
     startsAt: dateField,
     endsAt: dateField,
+    includeCustom: z.boolean().default(false),
   })
   .superRefine((v, ctx) => {
     if (v.type === "BUNDLE_PRICE" && v.pricePaise === null) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["pricePaise"], message: "Enter the bundle price" });

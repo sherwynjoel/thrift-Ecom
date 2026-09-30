@@ -126,3 +126,60 @@ export async function createOrderRow(
     },
   });
 }
+
+export async function createDesignRow(
+  over: { productId: string } & Partial<{
+    userId: string | null; cartToken: string | null; colorName: string;
+    frontPreviewKey: string | null; frontPrintKey: string | null; backPreviewKey: string | null; backPrintKey: string | null;
+    assetKeys: string[]; createdAt: Date;
+  }>,
+) {
+  const pick = <T,>(v: T | undefined, d: T) => (v === undefined ? d : v);
+  return db.design.create({
+    data: {
+      productId: over.productId,
+      userId: pick(over.userId, null),
+      cartToken: pick(over.cartToken, null),
+      colorName: over.colorName ?? "Black",
+      frontJson: { version: "6.0.0", objects: [{ type: "Textbox", text: "HELLO", data: { kind: "text", fontId: "anton" } }] },
+      frontPreviewKey: pick(over.frontPreviewKey, "designs/previews/f.png"),
+      frontPrintKey: pick(over.frontPrintKey, "designs/print/f.png"),
+      backPreviewKey: pick(over.backPreviewKey, null),
+      backPrintKey: pick(over.backPrintKey, null),
+      assetKeys: over.assetKeys ?? [],
+      rightsConfirmed: true,
+      createdAt: over.createdAt,
+    },
+  });
+}
+
+export async function createOrderItemRow(
+  orderId: string,
+  over: Partial<{
+    productName: string; size: string; colorName: string; sku: string; quantity: number; designId: string | null;
+    printFrontUrl: string | null; printBackUrl: string | null; designFrontPreviewUrl: string | null; designBackPreviewUrl: string | null; printedAt: Date | null;
+  }> = {},
+) {
+  const n = next();
+  const pick = <T,>(v: T | undefined, d: T) => (v === undefined ? d : v);
+  const quantity = over.quantity ?? 1;
+  return db.orderItem.create({
+    data: {
+      orderId,
+      productName: over.productName ?? `Blank Tee ${n}`,
+      productSlug: `blank-tee-${n}`,
+      size: over.size ?? "M",
+      colorName: over.colorName ?? "Black",
+      sku: over.sku ?? `SKU-${n}`,
+      unitPricePaise: 59900,
+      quantity,
+      lineTotalPaise: 59900 * quantity,
+      designId: pick(over.designId, null),
+      printFrontUrl: pick(over.printFrontUrl, "/api/uploads/designs/print/f.png"),
+      printBackUrl: pick(over.printBackUrl, null),
+      designFrontPreviewUrl: pick(over.designFrontPreviewUrl, "/api/uploads/designs/previews/f.png"),
+      designBackPreviewUrl: pick(over.designBackPreviewUrl, null),
+      printedAt: pick(over.printedAt, null),
+    },
+  });
+}

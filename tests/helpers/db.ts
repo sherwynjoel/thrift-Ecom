@@ -3,6 +3,7 @@ import { db } from "@/server/db";
 const TABLES = [
   "OrderEvent",
   "OrderItem",
+  "Design",
   "Order",
   "Address",
   "Coupon",

@@ -20,6 +20,8 @@ export const settingsInputSchema = z.object({
   whatsappNumber: z.preprocess(blankToNull, phoneSchema.nullable()),
   dailySummaryEnabled: z.boolean(),
   abandonedCartEnabled: z.boolean(),
+  customFrontFeePaise: z.number().int().min(0).max(1_000_000).optional(),
+  customBackFeePaise: z.number().int().min(0).max(1_000_000).optional(),
 }).superRefine((v, ctx) => {
   if (v.gstRateLowPct > v.gstRateHighPct) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["gstRateLowPct"], message: "The lower-slab rate can't be higher than the rate above the threshold" });

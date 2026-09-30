@@ -14,6 +14,7 @@ export interface CouponRow {
 export interface OfferRow {
   id: string; label: string; type: "BUNDLE_PRICE" | "QTY_PERCENT"; minQty: number; pricePaise: number | null; percent: number | null;
   collectionId: string | null; collectionName: string | null; active: boolean; startsAt: Date | null; endsAt: Date | null; uses: number;
+  includeCustom: boolean;
 }
 
 const paid = { in: [...PAID_STATUSES] };
@@ -130,6 +131,7 @@ async function offerRows(where: Prisma.OfferWhereInput = {}): Promise<OfferRow[]
   return rows.map((r) => ({
     id: r.id, label: r.label, type: r.type, minQty: r.minQty, pricePaise: r.pricePaise, percent: r.percent, collectionId: r.collectionId,
     collectionName: r.collection?.name ?? null, active: r.active, startsAt: r.startsAt, endsAt: r.endsAt, uses: uses.get(r.label) ?? 0,
+    includeCustom: r.includeCustom,
   }));
 }
 

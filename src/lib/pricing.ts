@@ -3,10 +3,12 @@ import { formatPaise } from "@/lib/money";
 export type OfferKind = "BUNDLE_PRICE" | "QTY_PERCENT";
 export type CouponKind = "PERCENT" | "FLAT";
 
-export interface PricingLine { unitPricePaise: number; quantity: number; collectionIds: string[] }
+export interface PricingLine { unitPricePaise: number; quantity: number; collectionIds: string[]; custom?: boolean }
 export interface PricingOffer {
   id: string; label: string; type: OfferKind; minQty: number; pricePaise: number | null; percent: number | null;
   collectionId: string | null; active: boolean; startsAt: Date | null; endsAt: Date | null;
+  /** Custom-print lines count towards the offer only when true. */
+  includeCustom?: boolean;
 }
 export interface PricingCoupon {
   code: string; type: CouponKind; value: number; minSubtotalPaise: number; maxDiscountPaise: number | null;
@@ -38,6 +40,7 @@ function live(x: { active: boolean; startsAt: Date | null; endsAt: Date | null }
 export function offerDiscount(offer: PricingOffer, lines: PricingLine[]): number {
   const units: number[] = [];
   for (const l of lines) {
+    if (l.custom && !offer.includeCustom) continue;
     if (offer.collectionId && !l.collectionIds.includes(offer.collectionId)) continue;
     for (let i = 0; i < l.quantity; i++) units.push(l.unitPricePaise);
   }

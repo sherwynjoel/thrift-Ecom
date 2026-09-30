@@ -98,15 +98,13 @@ export async function addItem(ref: CartRef, variantId: string, quantity: number)
   if (quantity === 0) throw new ValidationError({ quantity: ["Quantity must be at least 1"] });
   const variant = await loadSellableVariant(variantId);
   const cartId = await findOrCreateCartId(ref);
-  const existing = await db.cartItem.findUnique({ where: { cartId_variantId: { cartId, variantId } } });
+  // Plain lines are unique per (cart, variant) through the partial index CartItem_cartId_variantId_plain_key (designId IS NULL).
+  const existing = await db.cartItem.findFirst({ where: { cartId, variantId, designId: null } });
   const next = (existing?.quantity ?? 0) + quantity;
   if (next > MAX_QTY_PER_LINE) throw new ValidationError({ quantity: [`You can add at most ${MAX_QTY_PER_LINE} of one item`] });
   if (next > variant.stock) throw new OutOfStockError(variant.stock);
-  await db.cartItem.upsert({
-    where: { cartId_variantId: { cartId, variantId } },
-    update: { quantity: next },
-    create: { cartId, variantId, quantity: next },
-  });
+  if (existing) await db.cartItem.update({ where: { id: existing.id }, data: { quantity: next } });
+  else await db.cartItem.create({ data: { cartId, variantId, quantity: next } });
   return getCart(ref);
 }
 
@@ -140,14 +138,11 @@ export async function mergeGuestCartIntoUser(guestToken: string, userId: string)
   const userCartId = await findOrCreateCartId({ userId });
   await db.$transaction(async (tx) => {
     for (const it of guest.items) {
-      const existing = await tx.cartItem.findUnique({ where: { cartId_variantId: { cartId: userCartId, variantId: it.variantId } } });
+      const existing = await tx.cartItem.findFirst({ where: { cartId: userCartId, variantId: it.variantId, designId: null } });
       const merged = Math.min((existing?.quantity ?? 0) + it.quantity, it.variant.stock, MAX_QTY_PER_LINE);
       if (merged <= 0) continue;
-      await tx.cartItem.upsert({
-        where: { cartId_variantId: { cartId: userCartId, variantId: it.variantId } },
-        update: { quantity: merged },
-        create: { cartId: userCartId, variantId: it.variantId, quantity: merged },
-      });
+      if (existing) await tx.cartItem.update({ where: { id: existing.id }, data: { quantity: merged } });
+      else await tx.cartItem.create({ data: { cartId: userCartId, variantId: it.variantId, quantity: merged } });
     }
     await tx.cart.delete({ where: { id: guest.id } });
   });
