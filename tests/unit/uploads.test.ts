@@ -23,4 +23,11 @@ describe("validateImage", () => {
     expect(k).toMatch(/^products\/[a-z0-9-]+\.png$/);
     expect(newUploadKey("products", "png")).not.toBe(k);
   });
+
+  it("accepts a larger per-call limit", () => {
+    const big = new Uint8Array(MAX_UPLOAD_BYTES + 10);
+    big.set(png);
+    expect(() => validateImage(big)).toThrow(ValidationError);
+    expect(validateImage(big, MAX_UPLOAD_BYTES * 2)).toEqual({ ext: "png", contentType: "image/png" });
+  });
 });

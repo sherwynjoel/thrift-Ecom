@@ -11,9 +11,9 @@ function startsWith(bytes: Uint8Array, sig: number[], offset = 0): boolean {
   return sig.every((b, i) => bytes[offset + i] === b);
 }
 
-export function validateImage(bytes: Uint8Array): Detected {
-  if (bytes.byteLength > MAX_UPLOAD_BYTES) {
-    throw new ValidationError({ file: [`Images must be under ${MAX_UPLOAD_BYTES / 1024 / 1024} MB`] });
+export function validateImage(bytes: Uint8Array, maxBytes: number = MAX_UPLOAD_BYTES): Detected {
+  if (bytes.byteLength > maxBytes) {
+    throw new ValidationError({ file: [`Images must be under ${Math.round(maxBytes / 1024 / 1024)} MB`] });
   }
   if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return { ext: "png", contentType: "image/png" };
   if (startsWith(bytes, [0xff, 0xd8, 0xff])) return { ext: "jpg", contentType: "image/jpeg" };
@@ -25,9 +25,12 @@ export function newUploadKey(prefix: string, ext: string): string {
   return `${prefix}/${randomUUID()}.${ext}`;
 }
 
-export async function storeImage(file: File, prefix: string): Promise<{ url: string; key: string }> {
+export async function storeImage(file: File, prefix: string, opts: { maxBytes?: number } = {}): Promise<{ url: string; key: string }> {
+  const maxBytes = opts.maxBytes ?? MAX_UPLOAD_BYTES;
+  // Reject oversize files before buffering them into memory.
+  if (file.size > maxBytes) throw new ValidationError({ file: [`Images must be under ${Math.round(maxBytes / 1024 / 1024)} MB`] });
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const { ext, contentType } = validateImage(bytes);
+  const { ext, contentType } = validateImage(bytes, maxBytes);
   const key = newUploadKey(prefix, ext);
   const { url } = await getStorage().put(key, bytes, contentType);
   return { url, key };

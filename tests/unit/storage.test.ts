@@ -28,4 +28,13 @@ describe("LocalDiskStorage", () => {
     await expect(s.put("", new Uint8Array([1]), "image/png")).rejects.toThrow();
     await expect(s.put(".", new Uint8Array([1]), "image/png")).rejects.toThrow();
   });
+
+  it("reads a stored file back and returns null when it is missing", async () => {
+    const root = mkdtempSync(join(tmpdir(), "store-"));
+    const s = new LocalDiskStorage(root, "/api/uploads");
+    await s.put("designs/print/a.png", new Uint8Array([7, 8, 9]), "image/png");
+    expect(Array.from((await s.get("designs/print/a.png"))!)).toEqual([7, 8, 9]);
+    expect(await s.get("designs/print/missing.png")).toBeNull();
+    await expect(s.get("../escape.png")).rejects.toThrow();
+  });
 });

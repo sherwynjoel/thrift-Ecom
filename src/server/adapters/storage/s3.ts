@@ -1,4 +1,4 @@
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { StorageAdapter } from "./types";
 
 export class S3Storage implements StorageAdapter {
@@ -18,5 +18,15 @@ export class S3Storage implements StorageAdapter {
 
   async delete(key: string): Promise<void> {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.opts.bucket, Key: key }));
+  }
+
+  async get(key: string): Promise<Uint8Array | null> {
+    try {
+      const res = await this.client.send(new GetObjectCommand({ Bucket: this.opts.bucket, Key: key }));
+      return res.Body ? await res.Body.transformToByteArray() : null;
+    } catch (err) {
+      if ((err as { name?: string }).name === "NoSuchKey") return null;
+      throw err;
+    }
   }
 }

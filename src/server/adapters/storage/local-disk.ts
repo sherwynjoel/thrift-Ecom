@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import type { StorageAdapter } from "./types";
 
@@ -26,5 +26,15 @@ export class LocalDiskStorage implements StorageAdapter {
 
   async delete(key: string): Promise<void> {
     await rm(this.resolveKey(key), { force: true });
+  }
+
+  async get(key: string): Promise<Uint8Array | null> {
+    const full = this.resolveKey(key);
+    try {
+      return new Uint8Array(await readFile(full));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw err;
+    }
   }
 }
