@@ -23,3 +23,9 @@ export async function clearGuestToken(): Promise<void> {
   const store = await cookies();
   store.delete(CART_COOKIE);
 }
+
+/** Set-Cookie value equivalent to ensureGuestToken(), for route handlers that mint a token themselves. */
+export function guestCookieHeader(token: string): string {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${CART_COOKIE}=${token}; Path=/; Max-Age=${ONE_YEAR}; HttpOnly; SameSite=Lax${secure}`;
+}

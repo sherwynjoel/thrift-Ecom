@@ -5,7 +5,7 @@ import { RateLimitedError, toHttp, UnauthorizedError, ValidationError } from "@/
 import { verifyApiToken } from "@/server/api-token";
 import { getUserById, type PublicUser } from "@/server/services/auth";
 import type { CartRef } from "@/server/services/cart";
-import { CART_COOKIE } from "@/server/cart-cookie";
+import { CART_COOKIE, guestCookieHeader } from "@/server/cart-cookie";
 
 export const CART_TOKEN_HEADER = "X-Cart-Token";
 export type RouteCtx = { params: Promise<Record<string, string>> };
@@ -107,5 +107,13 @@ export async function resolveApiCartRef(req: NextRequest): Promise<{ ref: CartRe
 
 export function withCartToken(res: Response, token: string | null): Response {
   if (token) res.headers.set(CART_TOKEN_HEADER, token);
+  return res;
+}
+
+/** Like withCartToken, and also stores the token as the browser's cart cookie (the studio posts with fetch). */
+export function withGuestCookie(res: Response, token: string | null): Response {
+  if (!token) return res;
+  res.headers.set(CART_TOKEN_HEADER, token);
+  res.headers.append("Set-Cookie", guestCookieHeader(token));
   return res;
 }
