@@ -90,9 +90,60 @@ describe("canvas JSON", () => {
     expect(out.objects[1]).toBe(image);
   });
 
-  it("accepts text and studio images and collects asset urls", () => {
+  it("accepts text and studio images, rebuilds them from a property whitelist and collects asset urls", () => {
     const r = validateSideJson({ version: "6.4.0", objects: [text, image, image] }, prefix);
-    expect(r).toEqual({ ok: true, json: { version: "6.4.0", objects: [text, image, image] }, assetUrls: [`${prefix}a.png`] });
+    if (!r.ok) throw new Error("expected ok");
+    expect(r.json.version).toBe("6.4.0");
+    expect(r.json.objects).toHaveLength(3);
+    expect(r.json.objects[0]).toMatchObject({ type: "Textbox", text: "HELLO", data: { fontId: "anton" } });
+    expect(r.json.objects[0].fontFamily).toBeUndefined(); // dropped: re-derived from fontId on load, never trusted from storage
+    expect(r.json.objects[1]).toMatchObject({ type: "Image", src: `${prefix}a.png` });
+    expect(r.json.objects[1].data).toBeUndefined(); // images carry no whitelisted data
+    expect(r.assetUrls).toEqual([`${prefix}a.png`]);
+  });
+
+  it("strips pattern fill, clipPath, shadow, filters and stroke instead of storing them", () => {
+    const r = validateSideJson({
+      objects: [{
+        type: "textbox", text: "ok",
+        fill: { type: "pattern", source: "https://evil.example/x.png" },
+        clipPath: { type: "image", src: "https://evil.example/y.png" },
+        shadow: { color: "red" },
+        filters: [{ type: "Blur" }],
+        stroke: "#ff0000",
+        data: { kind: "text" },
+      }],
+    }, prefix);
+    if (!r.ok) throw new Error("expected ok");
+    const [o] = r.json.objects;
+    expect(o.text).toBe("ok");
+    expect(o.fill).toBeUndefined();
+    expect(o.clipPath).toBeUndefined();
+    expect(o.shadow).toBeUndefined();
+    expect(o.filters).toBeUndefined();
+    expect(o.stroke).toBeUndefined();
+  });
+
+  it("rejects an image whose src escapes via a percent-encoded '..' segment", () => {
+    expect(validateSideJson({ objects: [{ type: "Image", src: `${prefix}%2e%2e/x.png` }] }, prefix)).toEqual({ ok: false, error: "Images must be uploaded through the studio" });
+  });
+
+  it("clamps non-finite and out-of-range numerics instead of rejecting the object", () => {
+    const r = validateSideJson({
+      objects: [{
+        type: "Image", src: `${prefix}a.png`,
+        clipPath: { type: "image", src: "https://evil.example/z.png" },
+        scaleX: 1e12, scaleY: Number.NaN, angle: Number.POSITIVE_INFINITY, left: Number.NaN, opacity: 5,
+      }],
+    }, prefix);
+    if (!r.ok) throw new Error("expected ok");
+    const [o] = r.json.objects;
+    expect(o.clipPath).toBeUndefined();
+    expect(o.scaleX).toBe(50);
+    expect(o.scaleY).toBe(1);
+    expect(o.angle).toBe(0);
+    expect(o.left).toBe(0);
+    expect(o.opacity).toBe(1);
   });
 
   it("rejects foreign images, unknown layers, oversize text and too many layers", () => {
