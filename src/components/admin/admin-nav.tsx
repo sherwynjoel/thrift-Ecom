@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, Layers, ShoppingBag, Store } from "lucide-react";
+import { Boxes, Gift, LayoutDashboard, Layers, Package, Settings, ShoppingBag, Store, Ticket, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ITEMS = [
@@ -10,6 +10,11 @@ const ITEMS = [
   { href: "/admin/orders", label: "Orders", icon: ShoppingBag },
   { href: "/admin/products", label: "Products", icon: Package },
   { href: "/admin/collections", label: "Collections", icon: Layers },
+  { href: "/admin/inventory", label: "Inventory", icon: Boxes },
+  { href: "/admin/customers", label: "Customers", icon: Users },
+  { href: "/admin/coupons", label: "Coupons", icon: Ticket },
+  { href: "/admin/offers", label: "Offers", icon: Gift },
+  { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
 export function AdminNav({ toShipCount }: { toShipCount: number }) {

@@ -99,7 +99,9 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
             <a href={`mailto:${order.email}`} className="inline-flex min-h-11 items-center break-all text-sm text-text-muted underline-offset-4 hover:text-text hover:underline">
               {order.email}
             </a>
-            <p className="text-sm text-text-muted">{order.customer.paidOrderCount} paid {order.customer.paidOrderCount === 1 ? "order" : "orders"}</p>
+            <Link href={`/admin/customers/${order.customer.id}`} className="inline-flex min-h-11 items-center text-sm text-text-muted underline-offset-4 hover:text-text hover:underline" data-testid="customer-link">
+              {order.customer.paidOrderCount} paid {order.customer.paidOrderCount === 1 ? "order" : "orders"}
+            </Link>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <Button variant="secondary" className="h-11" render={<a href={telLink(order.ship.phone)} />} nativeButton={false} data-testid="call-link">
                 <Phone className="size-4" /> {formatPhone(order.ship.phone)}

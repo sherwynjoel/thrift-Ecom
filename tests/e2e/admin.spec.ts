@@ -92,4 +92,45 @@ test.describe("admin", () => {
     await expect(page).toHaveURL(/\/admin\/collections$/);
     await expect(page.getByTestId("collections-table")).not.toContainText(name);
   });
+
+  test("coupon create and delete, and inline stock edit", async ({ page }) => {
+    test.slow();
+    const code = `E2E${Date.now().toString().slice(-8)}`;
+    await loginAdmin(page);
+
+    await page.goto("/admin/coupons/new");
+    await page.getByLabel("Code", { exact: true }).fill(code.toLowerCase());
+    await page.getByLabel("Percent (1–90)").fill("10");
+    await page.getByLabel("Maximum discount (₹)").fill("150");
+    await expect(page.getByTestId("coupon-preview")).toContainText("10% off (max ₹150)");
+    await page.getByTestId("save-coupon").click();
+    await expect(page).toHaveURL(/\/admin\/coupons$/);
+    const row = page.getByTestId("coupon-row").filter({ hasText: code });
+    await expect(row).toContainText("10% off (max ₹150)");
+    await expect(row).toContainText("0 / ∞");
+
+    await row.getByRole("link", { name: code }).click();
+    await page.getByTestId("delete-button").click();
+    await page.getByTestId("confirm-delete").click();
+    await expect(page).toHaveURL(/\/admin\/coupons$/);
+    await expect(page.getByTestId("coupon-row").filter({ hasText: code })).toHaveCount(0);
+
+    await page.goto("/admin/inventory");
+    const input = page.getByTestId("stock-input").first();
+    const before = await input.inputValue();
+    await input.fill(String(Number(before) + 1));
+    await input.press("Enter");
+    await expect(page.getByText("Stock updated", { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId("stock-input").first()).toHaveValue(String(Number(before) + 1));
+    // Put it back.
+    const again = page.getByTestId("stock-input").first();
+    await again.fill(before);
+    await again.press("Enter");
+    await expect(page.getByText("Stock updated", { exact: true }).first()).toBeVisible();
+    // Escape reverts an unsaved edit.
+    await again.fill("999");
+    await again.press("Escape");
+    await expect(again).toHaveValue(before);
+  });
 });

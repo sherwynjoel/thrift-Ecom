@@ -42,3 +42,38 @@ test.describe("admin at phone width", () => {
     await assertAdminChromeOk(page);
   });
 });
+
+test.describe("admin ops pages at 360px", () => {
+  test.skip(!ADMIN_EMAIL || !ADMIN_PASSWORD, "ADMIN_EMAIL/ADMIN_PASSWORD must be set in .env");
+  test.use({ viewport: { width: 360, height: 780 } });
+
+  test("dashboard, inventory, customers, coupons, offers and settings fit without sideways scroll", async ({ page }) => {
+    test.slow();
+    await login(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 15_000 });
+
+    await page.goto("/admin");
+    await expect(page.getByTestId("revenue-bars")).toBeVisible();
+    await expect(page.getByTestId("revenue-tiles")).toBeVisible();
+    await assertAdminChromeOk(page);
+
+    for (const [url, testId] of [
+      ["/admin/inventory?low=1", "low-filter"],
+      ["/admin/inventory", "inventory-table"],
+      ["/admin/customers", "customers-table"],
+      ["/admin/coupons/new", "coupon-form"],
+      ["/admin/offers/new", "offer-form"],
+      ["/admin/settings", "settings-form"],
+    ] as const) {
+      await page.goto(url);
+      await expect(page.getByTestId(testId)).toBeVisible();
+      await assertAdminChromeOk(page);
+    }
+    await page.goto("/admin/coupons");
+    await expect(page.getByRole("heading", { name: "Coupons" })).toBeVisible();
+    await assertNoPageOverflow(page);
+    await page.goto("/admin/offers");
+    await expect(page.getByRole("heading", { name: "Offers" })).toBeVisible();
+    await assertNoPageOverflow(page);
+  });
+});
