@@ -17,7 +17,9 @@ test("home renders hero, ticker, collections, and drops", async ({ page }) => {
 test("hero CTA goes to new drops", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("hero-cta").click();
-  await expect(page).toHaveURL(/\/collections\/new-drops/);
+  // Client navigation waits for the route to (re)compile in the shared dev server, which can
+  // take >10s late in a full run once the dev server has evicted it.
+  await expect(page).toHaveURL(/\/collections\/new-drops/, { timeout: 30_000 });
 });
 
 test("home has no hydration errors", async ({ page }) => {

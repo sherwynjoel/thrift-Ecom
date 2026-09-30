@@ -20,11 +20,14 @@ export default defineConfig({
     url: "http://localhost:3001",
     reuseExistingServer: false,
     timeout: 180_000,
-    env: { NEXT_PUBLIC_SITE_URL: "http://localhost:3001", NEXT_DIST_DIR: ".next-e2e" },
+    // PAYMENT_PROVIDER is forced to mock so e2e never reaches Razorpay even if the dev .env is switched to it.
+    env: { NEXT_PUBLIC_SITE_URL: "http://localhost:3001", NEXT_DIST_DIR: ".next-e2e", PAYMENT_PROVIDER: "mock" },
   },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"] } },
+    { name: "desktop", use: { ...devices["Desktop Chrome"] }, testIgnore: /checkout-mobile/ },
     { name: "mobile", use: { ...devices["Pixel 7"] }, testMatch: /home|product-cart|admin-mobile/ },
     { name: "reduced-motion", use: { ...devices["Desktop Chrome"], reducedMotion: "reduce" }, testMatch: /home/ },
+    // Chromium with touch at 390x844, the phone size the checkout spec targets.
+    { name: "mobile-checkout", use: { ...devices["Pixel 7"], viewport: { width: 390, height: 844 } }, testMatch: /checkout-mobile/ },
   ],
 });

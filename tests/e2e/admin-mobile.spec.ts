@@ -34,7 +34,8 @@ test.describe("admin at phone width", () => {
     await assertAdminChromeOk(page);
 
     await page.getByTestId("product-row").first().getByRole("link").first().click();
-    await expect(page.getByTestId("product-editor")).toBeVisible();
+    // Allow for a dev-server recompile of the editor route late in a full run.
+    await expect(page.getByTestId("product-editor")).toBeVisible({ timeout: 30_000 });
     await assertAdminChromeOk(page);
 
     await page.goto("/admin/collections");
