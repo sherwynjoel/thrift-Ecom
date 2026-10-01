@@ -2,6 +2,29 @@
 
 Custom T-shirt e-commerce: animated storefront, persistent cart, accounts, admin panel, and (later) a design-your-own tool. Next.js 15, Prisma, PostgreSQL.
 
+## Go live in 2 steps
+
+Everything else is already built: the Docker image, the Compose stack (app, Postgres, Caddy with automatic HTTPS, daily backups, scheduled jobs) and a full runbook. Only two things are left for the store owner.
+
+1. **Razorpay keys.** In the Razorpay dashboard, create API keys and a webhook to `https://<your-domain>/api/webhooks/razorpay` for events **payment.captured**, **order.paid** and **payment.failed**. Put `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET` into `deploy/.env` and run `bash deploy/deploy.sh --restart`. Start in **Test mode**; switch to **Live** keys and a live webhook after KYC ([docs/deploy/aws-ec2.md](docs/deploy/aws-ec2.md), step 10).
+2. **SSH access to a server.** Launch an Ubuntu 24.04 EC2 instance (Mumbai), point the domain at it, then `sudo bash deploy/setup-ec2.sh`, fill in `deploy/.env`, `bash deploy/deploy.sh`, `bash deploy/seed-admin.sh you@yourdomain.com`. Every click and command is in [docs/deploy/aws-ec2.md](docs/deploy/aws-ec2.md) (about 30–45 minutes, steps 2–9).
+
+**Environment variables that must be set** (checked at server start — see [Environment variables](#environment-variables)): `AUTH_SECRET`; `PAYMENT_PROVIDER=razorpay` with `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`; `CRON_SECRET` (32+ characters); `EMAIL_DRIVER=smtp` (with `SMTP_URL`, `EMAIL_FROM`) or `EMAIL_DRIVER=ses` (with `AWS_REGION`, `EMAIL_FROM`); `NEXT_PUBLIC_SITE_URL` as a real `https://` address. The server refuses to start in production if any of these is missing or wrong.
+
+**Scheduled jobs:** the `cron` container already runs all 7 jobs (`expire-orders`, `low-stock`, `daily-summary`, `abandoned-cart`, `reconcile-payments`, `purge-designs`, `review-request`) on Indian time — the owner does nothing (see [Cron](#cron)).
+
+**After each deploy, check:** the home page, a product page, the design studio, checkout with a Razorpay **test** card, admin login, printing a label, and `curl https://<domain>/api/health` → `"status":"ok"` (full checklist: [docs/deploy/aws-ec2.md](docs/deploy/aws-ec2.md), step 16).
+
+**Before launch:**
+
+- Try the design studio's touch gestures on a real iPhone (Safari) and a real Android phone (Chrome) — see [Design studio and print queue](#design-studio-and-print-queue).
+- Confirm each carrier's tracking URL with a real AWB (`src/lib/carriers.ts`).
+- Fill in seller name, address, state and GSTIN in **Admin → Settings**.
+- Confirm the GST slab basis (list price vs. discounted price) with your CA — see [Admin: daily order routine](#admin-daily-order-routine).
+- If a reverse proxy sits in front of Caddy, it must allow request bodies ≥ 100 MB on `/api/designs` (Caddy already does; see `deploy/Caddyfile`).
+- If using S3 storage, keep `designs/print/` out of the bucket's public policy.
+- Use at least a **t3.small (2 GB RAM) with 2 GB swap** (`deploy/setup-ec2.sh` adds the swap).
+
 ## Local setup
 
 1. `docker compose up -d` — Postgres on localhost:5432 (`thrift` and `thrift_test` databases)
