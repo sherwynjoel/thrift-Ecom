@@ -4,7 +4,7 @@ import { formatDateIst } from "@/lib/dates";
 import { invoiceFromOrder } from "@/lib/gst";
 import { invoiceInputsFor } from "@/lib/invoice-snapshot";
 import { formatPaise } from "@/lib/money";
-import type { OrderView } from "@/server/services/order-records";
+import type { CustomerOrderView as OrderView } from "@/server/services/order-records";
 import type { StoreSettings } from "@/server/services/settings";
 
 const rupees = (p: number) => (p / 100).toFixed(2);

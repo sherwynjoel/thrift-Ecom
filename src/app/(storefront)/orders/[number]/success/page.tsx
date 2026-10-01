@@ -14,7 +14,7 @@ import { formatPaise } from "@/lib/money";
 import { isPaidStatus } from "@/lib/order-status";
 import { auth } from "@/server/auth";
 import { NotFoundError } from "@/server/errors";
-import { orderDiscountLabel, type OrderView } from "@/server/services/order-records";
+import { orderDiscountLabel, type CustomerOrderView as OrderView } from "@/server/services/order-records";
 import { getOrderForUser } from "@/server/services/orders";
 
 export const metadata: Metadata = { title: "Your order", robots: { index: false } };

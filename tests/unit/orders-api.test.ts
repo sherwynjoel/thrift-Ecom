@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
+import { db } from "@/server/db";
 import { resetDb } from "../helpers/db";
-import { createOrderRow, createUser } from "../helpers/fixtures";
+import { createOrderItemRow, createOrderRow, createUser } from "../helpers/fixtures";
 import { signApiToken } from "@/server/api-token";
 import { GET as listOrders } from "@/app/api/v1/orders/route";
 import { GET as getOrder } from "@/app/api/v1/orders/[number]/route";
@@ -23,5 +24,19 @@ describe("/api/v1/orders", () => {
     expect((await one.json()).data.ship.city).toBe("Bengaluru");
     const theirs = await getOrder(new NextRequest(`${BASE}/api/v1/orders/ORD-1002`, { headers }), { params: Promise.resolve({ number: "ORD-1002" }) });
     expect(theirs.status).toBe(404);
+  });
+
+  it("never shows the customer an admin print hold", async () => {
+    const u = await createUser();
+    const o = await createOrderRow(u.id, { number: "ORD-1001" });
+    const item = await createOrderItemRow(o.id);
+    await db.orderItem.update({ where: { id: item.id }, data: { heldAt: new Date(), holdNote: "SECRET-HOLD-NOTE" } });
+    const headers = { authorization: `Bearer ${await signApiToken({ id: u.id, role: "CUSTOMER" })}` };
+    const one = await getOrder(new NextRequest(`${BASE}/api/v1/orders/ORD-1001`, { headers }), { params: Promise.resolve({ number: "ORD-1001" }) });
+    const text = await one.text();
+    expect(text).toContain(item.sku);
+    expect(text).not.toMatch(/holdNote|heldAt|SECRET-HOLD-NOTE/);
+    const list = await listOrders(new NextRequest(`${BASE}/api/v1/orders`, { headers }), { params: Promise.resolve({}) });
+    expect(await list.text()).not.toMatch(/holdNote|heldAt|SECRET-HOLD-NOTE/);
   });
 });

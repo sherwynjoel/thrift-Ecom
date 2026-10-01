@@ -5,7 +5,7 @@ import { formatPaise } from "@/lib/money";
 import { isHttpUrl } from "@/lib/url";
 import { absoluteUrl, siteUrl } from "@/lib/site-url";
 import { customPrintLabel, printSidesOf } from "@/lib/custom-pricing";
-import type { OrderView } from "@/server/services/order-records";
+import type { CustomerOrderView as OrderView } from "@/server/services/order-records";
 
 export interface RenderedEmail { subject: string; html: string; text: string }
 export interface LowStockRow { productName: string; size: string; colorName: string; sku: string; stock: number }

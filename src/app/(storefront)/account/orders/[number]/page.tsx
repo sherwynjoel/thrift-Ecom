@@ -112,7 +112,8 @@ export default async function AccountOrderDetailPage({ params, searchParams }: {
                   {isCustomItem(i) && (
                     <>
                       <p className="text-xs font-medium text-brand">{customPrintLabel(printSidesOf(i))}</p>
-                      <CustomPrintThumbs front={i.designFrontPreviewUrl} back={i.designBackPreviewUrl} className="mt-1" />
+                      {/* A back-only design's back preview is already the line image; don't repeat it. */}
+                      <CustomPrintThumbs front={i.designFrontPreviewUrl} back={i.designBackPreviewUrl === i.imageUrl ? null : i.designBackPreviewUrl} className="mt-1" />
                     </>
                   )}
                 </div>

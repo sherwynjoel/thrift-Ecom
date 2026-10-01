@@ -26,6 +26,21 @@ export interface OrderView {
   /** Seller/GST inputs frozen when the order was paid; null for orders paid before snapshots existed (see invoiceInputsFor). */
   invoiceSnapshot: InvoiceSnapshot | null;
 }
+/** What a customer may see of an order (their pages, the /api/v1 order routes, emails): never the admin's print-hold note. */
+export type CustomerOrderItemView = Omit<OrderItemView, "heldAt" | "holdNote">;
+export type CustomerOrderView = Omit<OrderView, "items"> & { items: CustomerOrderItemView[] };
+
+export function toCustomerOrderView(o: OrderView): CustomerOrderView {
+  return {
+    ...o,
+    items: o.items.map((i) => {
+      const item: CustomerOrderItemView & Partial<Pick<OrderItemView, "heldAt" | "holdNote">> = { ...i };
+      delete item.heldAt;
+      delete item.holdNote;
+      return item;
+    }),
+  };
+}
 export interface OrderSummary {
   id: string; number: string; status: OrderStatus; createdAt: Date; paidAt: Date | null; totalPaise: number;
   itemCount: number; firstItemName: string; firstImageUrl: string | null;

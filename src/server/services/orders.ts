@@ -5,7 +5,7 @@ import { zodFieldErrors } from "@/server/action-result";
 import { ConflictError, NotFoundError, PaymentError, StockChangedError, ValidationError, type StockIssue } from "@/server/errors";
 import { getPaymentProvider, type PaymentProvider, type ProviderName } from "@/server/payments";
 import { quote } from "@/server/services/promotions";
-import { addOrderEvent, flagAttentionOnce, orderWithItems, toOrderSummary, toOrderView, type OrderSummary, type OrderView, type Tx } from "@/server/services/order-records";
+import { addOrderEvent, flagAttentionOnce, orderWithItems, toCustomerOrderView, toOrderSummary, toOrderView, type CustomerOrderView, type OrderSummary, type Tx } from "@/server/services/order-records";
 import { notifyOrder } from "@/server/services/notifications";
 import { getCustomFees, getSettings } from "@/server/services/settings";
 import { designFileUrl } from "@/server/services/designs";
@@ -145,9 +145,10 @@ function byVariantId<T extends { variantId: string | null }>(items: T[]): T[] {
 }
 
 /**
- * True when an open order IS this checkout attempt: same items (variantId + designId + quantity — a
- * bag can hold a plain line and custom lines of one variant, and a design is immutable once in a bag,
- * so its id pins the print and its fee), same coupon,
+ * True when an open order IS this checkout attempt: same items (variantId + designId + quantity +
+ * unit price — a bag can hold a plain line and custom lines of one variant, a design is immutable once
+ * in a bag so its id pins the print, and the unit price catches a variant price or print-fee change
+ * that a matching total would hide), same coupon,
  * same total, same delivery address and note, under the same provider. A retry (double-click Pay,
  * two tabs, a client retry after a dropped response) that still matches its still-open order should
  * hand back that same order rather than superseding it — superseding a payable order is itself the
@@ -159,9 +160,9 @@ function sameOpenOrder(
     totalPaise: number; couponCode: string | null; paymentProvider: string; customerNote: string | null;
     shipName: string; shipPhone: string; shipLine1: string; shipLine2: string | null; shipLandmark: string | null;
     shipCity: string; shipState: string; shipPincode: string;
-    items: { variantId: string | null; designId: string | null; quantity: number }[];
+    items: { variantId: string | null; designId: string | null; quantity: number; unitPricePaise: number }[];
   },
-  rows: CheckoutLineRow[], couponCode: string | null, totalPaise: number, providerName: string,
+  rows: CheckoutLineRow[], fees: CustomFees, couponCode: string | null, totalPaise: number, providerName: string,
   address: { fullName: string; phone: string; line1: string; line2: string | null; landmark: string | null; city: string; state: string; pincode: string },
   customerNote: string | null,
 ): boolean {
@@ -173,11 +174,14 @@ function sameOpenOrder(
   if ((o.shipLandmark ?? null) !== (address.landmark ?? null)) return false;
   if (o.shipCity !== address.city || o.shipState !== address.state || o.shipPincode !== address.pincode) return false;
   const lineKey = (variantId: string, designId: string | null) => `${variantId}|${designId ?? ""}`;
-  const want = new Map(rows.map((r) => [lineKey(r.variantId, r.designId), r.quantity]));
+  const want = new Map(rows.map((r) => [lineKey(r.variantId, r.designId), { quantity: r.quantity, unit: unitPriceOf(r, fees) }]));
   if (want.size !== rows.length) return false;
   const have = o.items.filter((i) => i.variantId !== null);
   if (have.length !== want.size) return false;
-  return have.every((it) => want.get(lineKey(it.variantId!, it.designId)) === it.quantity);
+  return have.every((it) => {
+    const w = want.get(lineKey(it.variantId!, it.designId));
+    return w !== undefined && w.quantity === it.quantity && w.unit === it.unitPricePaise;
+  });
 }
 
 /**
@@ -338,7 +342,7 @@ export async function placeOrder(userId: string, input: unknown): Promise<Checko
       include: { items: true },
       orderBy: { createdAt: "desc" },
     });
-    const reusable = openOrders.find((o) => canReuseOrder(o, now) && sameOpenOrder(o, rows, wantCouponCode, price.totalPaise, provider.name, address, wantNote));
+    const reusable = openOrders.find((o) => canReuseOrder(o, now) && sameOpenOrder(o, rows, fees, wantCouponCode, price.totalPaise, provider.name, address, wantNote));
     if (reusable) return { kind: "reuse" as const, orderId: reusable.id };
 
     const couponLimits = price.applied === "coupon" && price.coupon ? await lockCoupon(tx, price.coupon.code) : null;
@@ -706,10 +710,10 @@ export async function findOrderByProviderOrderId(providerOrderId: string) {
   return db.order.findUnique({ where: { providerOrderId }, select: { id: true, userId: true, number: true, status: true, totalPaise: true } });
 }
 
-export async function getOrderForUser(userId: string, number: string): Promise<OrderView> {
+export async function getOrderForUser(userId: string, number: string): Promise<CustomerOrderView> {
   const o = await db.order.findFirst({ where: { number, userId }, include: orderWithItems });
   if (!o) throw new NotFoundError("Order");
-  return toOrderView(o);
+  return toCustomerOrderView(toOrderView(o));
 }
 
 /** Whether a failed payment attempt is on the order's timeline (see pendingPaymentMode). */

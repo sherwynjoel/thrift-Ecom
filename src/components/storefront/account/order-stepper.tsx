@@ -1,6 +1,6 @@
 import { formatDateIst } from "@/lib/dates";
 import { cn } from "@/lib/utils";
-import type { OrderView } from "@/server/services/order-records";
+import type { CustomerOrderView as OrderView } from "@/server/services/order-records";
 
 function StatusPanel({ title, date }: { title: string; date: Date | null }) {
   return (
