@@ -10,3 +10,8 @@ export function orderWhatsappText({ number, name, brand }: { number: string; nam
   const first = name.trim().split(/\s+/)[0] || "there";
   return `Hi ${first}, this is ${brand} about your order ${number}.`;
 }
+
+export function printHoldWhatsappText({ number, name, brand }: { number: string; name: string; brand: string }): string {
+  const first = name.trim().split(/\s+/)[0] || "there";
+  return `Hi ${first}, this is ${brand} about your custom tee in order ${number}. We need to check something about your artwork before printing.`;
+}

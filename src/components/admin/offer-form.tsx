@@ -28,6 +28,7 @@ export function OfferForm({ offer, collections }: { offer: OfferRow | null; coll
   const [percent, setPercent] = useState(offer?.percent ? String(offer.percent) : "");
   const [collectionId, setCollectionId] = useState(offer?.collectionId ?? "");
   const [active, setActive] = useState(offer?.active ?? true);
+  const [includeCustom, setIncludeCustom] = useState(offer?.includeCustom ?? false);
   // Filled after mount: datetime-local values are in the browser's zone (see CouponForm).
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
@@ -64,7 +65,7 @@ export function OfferForm({ offer, collections }: { offer: OfferRow | null; coll
     }
     const input: OfferInput = {
       label, type, minQty: qty as number, pricePaise: pricePaise ?? null, percent: pct ?? null,
-      collectionId: collectionId || null, active, startsAt: starts ?? null, endsAt: ends ?? null,
+      collectionId: collectionId || null, active, includeCustom, startsAt: starts ?? null, endsAt: ends ?? null,
     };
     start(async () => {
       try {
@@ -152,6 +153,14 @@ export function OfferForm({ offer, collections }: { offer: OfferRow | null; coll
           <FieldError errors={errors.endsAt} />
         </div>
         <p className="-mt-2 text-xs text-text-muted sm:col-span-2">Leave both blank to run it until you switch it off. Times are in your device&apos;s time zone; lists show IST.</p>
+      </div>
+
+      <div>
+        <label className="flex min-h-11 items-center gap-3 text-sm">
+          <input type="checkbox" checked={includeCustom} onChange={(e) => setIncludeCustom(e.target.checked)} className="size-5 accent-brand" aria-describedby="of-custom-hint" data-testid="offer-include-custom" />
+          Include custom-printed tees
+        </label>
+        <p id="of-custom-hint" className="text-xs text-text-muted">Off: custom tees never count toward this offer.</p>
       </div>
 
       <label className="flex min-h-11 items-center gap-3 text-sm">

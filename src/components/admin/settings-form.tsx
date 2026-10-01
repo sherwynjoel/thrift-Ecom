@@ -22,6 +22,7 @@ const LEGEND = "px-1 font-display text-2xl uppercase";
 type Text = {
   shippingFee: string; freeShippingThreshold: string; lowStockThreshold: string; adminNotifyEmail: string; whatsappNumber: string;
   sellerName: string; sellerAddress: string; sellerState: string; gstin: string; gstRateLowPct: string; gstRateHighPct: string; gstThreshold: string;
+  customFrontFee: string; customBackFee: string;
 };
 
 function fromSettings(s: StoreSettings): Text {
@@ -30,6 +31,7 @@ function fromSettings(s: StoreSettings): Text {
     lowStockThreshold: String(s.lowStockThreshold), adminNotifyEmail: s.adminNotifyEmail ?? "", whatsappNumber: s.whatsappNumber ?? "",
     sellerName: s.sellerName, sellerAddress: s.sellerAddress, sellerState: s.sellerState, gstin: s.gstin ?? "",
     gstRateLowPct: String(s.gstRateLowPct), gstRateHighPct: String(s.gstRateHighPct), gstThreshold: paiseToRupees(s.gstThresholdPaise),
+    customFrontFee: paiseToRupees(s.customFrontFeePaise), customBackFee: paiseToRupees(s.customBackFeePaise),
   };
 }
 
@@ -68,6 +70,8 @@ export function SettingsForm({ settings }: { settings: StoreSettings }) {
       gstRateHighPct: whole(t.gstRateHighPct, "gstRateHighPct"),
       gstThresholdPaise: rupees(t.gstThreshold, "gstThresholdPaise"),
       whatsappNumber: t.whatsappNumber,
+      customFrontFeePaise: rupees(t.customFrontFee, "customFrontFeePaise"),
+      customBackFeePaise: rupees(t.customBackFee, "customBackFeePaise"),
       dailySummaryEnabled,
       abandonedCartEnabled,
     };
@@ -115,6 +119,23 @@ export function SettingsForm({ settings }: { settings: StoreSettings }) {
             <FieldError errors={errors.freeShippingThresholdPaise} />
           </div>
         </div>
+      </fieldset>
+
+      <fieldset className={FIELDSET}>
+        <legend className={LEGEND}>Custom prints</legend>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="s-front-fee">Front print fee (₹)</Label>
+            <Input id="s-front-fee" value={t.customFrontFee} onChange={set("customFrontFee")} inputMode="decimal" className={FIELD} aria-describedby="s-print-fee-hint" />
+            <FieldError errors={errors.customFrontFeePaise} />
+          </div>
+          <div>
+            <Label htmlFor="s-back-fee">Back print fee (₹)</Label>
+            <Input id="s-back-fee" value={t.customBackFee} onChange={set("customBackFee")} inputMode="decimal" className={FIELD} aria-describedby="s-print-fee-hint" />
+            <FieldError errors={errors.customBackFeePaise} />
+          </div>
+        </div>
+        <p id="s-print-fee-hint" className="text-xs text-text-muted">Added to the tee price when that side has a design. 0 = free.</p>
       </fieldset>
 
       <fieldset className={FIELDSET}>
