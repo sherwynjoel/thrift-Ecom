@@ -1,7 +1,7 @@
 import { CANVAS_HEIGHT, CANVAS_WIDTH, PREVIEW_HEIGHT, PREVIEW_WIDTH, PRINT_AREA, PRINT_SIZES, type DesignSide, type StudioFontId } from "@/lib/studio/constants";
-import { fontIdsIn, withFontFamilies, type SideJson } from "@/lib/studio/canvas-json";
+import { fontIdsIn, withFontFamilies, withImageCors, type SideJson } from "@/lib/studio/canvas-json";
 import { shirtSvgMarkup } from "@/lib/studio/shirt";
-import type { FabricModule } from "./fabric-types";
+import { loadFontFaces, type FabricModule } from "./fabric-types";
 
 export interface SideExport { preview: Blob; print: Blob }
 
@@ -33,12 +33,16 @@ export async function uploadAsset(file: File): Promise<{ url: string }> {
  */
 export async function exportSide(fabric: FabricModule, json: SideJson, opts: { families: Record<StudioFontId, string>; colorHex: string; side: DesignSide }): Promise<SideExport | null> {
   if (json.objects.length === 0) return null;
-  await Promise.all(fontIdsIn(json).map((id) => document.fonts.load(`48px ${opts.families[id]}`).catch(() => undefined)));
+  await loadFontFaces(fontIdsIn(json), opts.families);
   const sc = new fabric.StaticCanvas(undefined, { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, enableRetinaScaling: false });
   try {
-    await sc.loadFromJSON(withFontFamilies(json, opts.families));
-    sc.clipPath = new fabric.Rect({ ...PRINT_AREA, absolutePositioned: true });
-    sc.renderAll();
+    await sc.loadFromJSON(withImageCors(withFontFamilies(json, opts.families)));
+    // Fabric's per-object cache is capped at ~2 MP, which would turn a 3600 × 4800 print into an upscale of that cache:
+    // draw every object straight onto the export canvas at full resolution instead.
+    sc.getObjects().forEach((o) => {
+      o.objectCaching = false;
+    });
+    // No clipPath for the print render: the crop below already equals the print area (and the clip rect has its own capped cache).
     let print: Blob | null = null;
     for (const size of PRINT_SIZES) {
       try {
@@ -48,11 +52,14 @@ export async function exportSide(fabric: FabricModule, json: SideJson, opts: { f
         el.height = 0; // release the large bitmap immediately (matters on phones)
         if (print && print.size > 0) break;
       } catch (err) {
+        // A tainted canvas (an image served without CORS) fails at every size: say so instead of blaming the device.
+        if ((err as { name?: string } | null)?.name === "SecurityError") throw new Error("One of your images could not be prepared for print. Remove it and upload it again.");
         console.warn("[studio] print export failed at", size, err);
       }
       print = null;
     }
     if (!print) throw new Error("This device could not prepare the print file. Please try a desktop browser.");
+    sc.clipPath = new fabric.Rect({ ...PRINT_AREA, absolutePositioned: true }); // the preview shows the shirt, so clip the art to the area
     const out = document.createElement("canvas");
     out.width = PREVIEW_WIDTH;
     out.height = PREVIEW_HEIGHT;

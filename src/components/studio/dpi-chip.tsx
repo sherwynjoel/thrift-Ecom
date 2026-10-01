@@ -4,14 +4,13 @@ import { AlertTriangle } from "lucide-react";
 import { dpiLevel, dpiMessage } from "@/lib/studio/dpi";
 import { cn } from "@/lib/utils";
 
-/** Print-quality warning for an image layer. Informational only: it never blocks adding to the bag. */
+/** Print-quality warning for an image layer. Informational only: it never blocks adding to the bag. Not a live region (the studio announces one summary). */
 export function DpiChip({ dpi, className }: { dpi: number | null; className?: string }) {
   if (dpi === null || !Number.isFinite(dpi)) return null;
   const level = dpiLevel(dpi);
   if (level === "ok") return null;
   return (
     <span
-      role="status"
       data-testid="dpi-warning"
       data-level={level}
       className={cn(

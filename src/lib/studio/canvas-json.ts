@@ -138,3 +138,19 @@ export function validateSideJson(raw: unknown, assetUrlPrefix: string): SideJson
   }
   return { ok: true, json: { ...json, objects }, assetUrls: [...assetUrls] };
 }
+
+const typeOf = (o: Record<string, unknown>) => String(o.type ?? "").toLowerCase();
+
+/** Text layers with nothing visible in them: not a printed side, no fee, no file. */
+export function isBlankText(o: Record<string, unknown>): boolean {
+  return TEXT_TYPES.has(typeOf(o)) && String(o.text ?? "").trim() === "";
+}
+
+export function withoutBlankText(json: SideJson): SideJson {
+  return { ...json, objects: json.objects.filter((o) => !isBlankText(o)) };
+}
+
+/** Images are always loaded with CORS so an S3-hosted asset never taints the editor or export canvas. The server never stores this key. */
+export function withImageCors(json: SideJson): SideJson {
+  return { ...json, objects: json.objects.map((o) => (IMAGE_TYPES.has(typeOf(o)) ? { ...o, crossOrigin: "anonymous" } : o)) };
+}

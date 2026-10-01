@@ -2,19 +2,20 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Canvas, FabricImage, FabricObject, Textbox } from "fabric";
+import { toast } from "sonner";
 import { CANVAS_WIDTH, MAX_OBJECTS_PER_SIDE, MAX_TEXT_CHARS, PRINT_AREA, type DesignSide, type StudioFontId } from "@/lib/studio/constants";
-import { EMPTY_SIDE, fontIdsIn, toSideJson, withFontFamilies, type SideJson } from "@/lib/studio/canvas-json";
+import { EMPTY_SIDE, fontIdsIn, isBlankText, toSideJson, withFontFamilies, withImageCors, withoutBlankText, type SideJson } from "@/lib/studio/canvas-json";
 import { canRedo, canUndo, createHistory, pushHistory, redoHistory, undoHistory, type History } from "@/lib/studio/history";
 import { objectDpi } from "@/lib/studio/dpi";
 import { clampScale } from "@/lib/studio/gesture";
-import { loadFabric, type FabricModule } from "./fabric-types";
+import { loadFabric, loadFontFaces, type FabricModule } from "./fabric-types";
 import { usePinch } from "./use-pinch";
 
 export interface LayerInfo { index: number; kind: "text" | "image"; label: string; dpi: number | null; selected: boolean }
 export interface SelectedText { text: string; fill: string; fontSize: number; fontId: StudioFontId; bold: boolean; italic: boolean; align: "left" | "center" | "right"; charSpacing: number }
 export interface StudioCanvasApi {
   hostRef: React.RefObject<HTMLDivElement | null>; canvasElRef: React.RefObject<HTMLCanvasElement | null>;
-  ready: boolean; side: DesignSide; setSide(s: DesignSide): Promise<void>; counts: Record<DesignSide, number>;
+  ready: boolean; failed: boolean; retry(): void; side: DesignSide; setSide(s: DesignSide): Promise<void>; counts: Record<DesignSide, number>;
   layers: LayerInfo[]; selectedKind: "text" | "image" | null; selectedText: SelectedText | null; selectedDpi: number | null;
   canUndo: boolean; canRedo: boolean; undo(): Promise<void>; redo(): Promise<void>;
   addText(text: string, fontId: StudioFontId): Promise<void>; updateText(patch: Partial<SelectedText>): Promise<void>;
@@ -34,6 +35,11 @@ const BRAND = "#d4ff3f";
 
 const isText = (o: FabricObject): o is Textbox => o.data?.kind === "text" || TEXT_TYPES.has(String(o.type).toLowerCase());
 const isImage = (o: FabricObject): o is FabricImage => !isText(o) && String(o.type).toLowerCase() === "image";
+/** Empty text layers stay editable but are not printed (no fee, no file). */
+const isPrinted = (o: FabricObject) => !(isText(o) && !(o.text ?? "").trim());
+const FULL_MESSAGE = `Use at most ${MAX_OBJECTS_PER_SIDE} layers per side`;
+/** Keyboard shortcuts only apply while focus is in the studio (never in the cart drawer or other dialogs). */
+export const STUDIO_ROOT_ATTR = "data-studio-root";
 
 function imageDpi(img: FabricImage): number {
   return objectDpi({ naturalWidth: img.width, naturalHeight: img.height, scaledWidth: img.getScaledWidth(), scaledHeight: img.getScaledHeight() });
@@ -62,7 +68,7 @@ function styleControls(o: FabricObject): void {
 
 function sideJsonLength(json: string): number {
   try {
-    return toSideJson(JSON.parse(json))?.objects.length ?? 0;
+    return toSideJson(JSON.parse(json))?.objects.filter((o) => !isBlankText(o)).length ?? 0;
   } catch {
     return 0;
   }
@@ -84,14 +90,13 @@ export function useStudioCanvas({ families, initial, inkHex }: { families: Recor
     back: createHistory(JSON.stringify(initial.back)),
   });
   const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [side, setSideState] = useState<DesignSide>("front");
   const [, setTick] = useState(0); // re-render after canvas changes; every derived value is read from the refs
   const bump = useCallback(() => setTick((t) => t + 1), []);
 
-  const ensureFonts = useCallback(async (ids: StudioFontId[]) => {
-    const variants = ["", "bold ", "italic ", "italic bold "];
-    await Promise.all(ids.flatMap((id) => variants.map((v) => document.fonts.load(`${v}48px ${families[id]}`).catch(() => undefined))));
-  }, [families]);
+  const ensureFonts = useCallback((ids: StudioFontId[]) => loadFontFaces(ids, families), [families]);
 
   const serialize = useCallback((): SideJson => {
     const c = canvasRef.current;
@@ -118,6 +123,9 @@ export function useStudioCanvas({ families, initial, inkHex }: { families: Recor
 
   /** Commits a pending (debounced) text edit now, so undo, side switches and exports never lose it. */
   const flush = useCallback(() => {
+    // Typing on the canvas only commits when editing ends (object:modified), and a click outside the canvas never ends it.
+    const active = canvasRef.current?.getActiveObject();
+    if (active && isText(active) && active.isEditing) active.exitEditing();
     if (commitTimer.current) commit();
   }, [commit]);
 
@@ -138,7 +146,7 @@ export function useStudioCanvas({ families, initial, inkHex }: { families: Recor
         const active = c.getActiveObject();
         const selected = keepSelection && active ? c.getObjects().indexOf(active) : -1;
         c.discardActiveObject();
-        await c.loadFromJSON(withFontFamilies(parsed, families));
+        await c.loadFromJSON(withImageCors(withFontFamilies(parsed, families)));
         c.getObjects().forEach(styleControls);
         clip(); // loadFromJSON resets canvas.clipPath
         // Undo/redo keep the same layer selected (when it still exists) so the text controls stay open.
@@ -161,11 +169,15 @@ export function useStudioCanvas({ families, initial, inkHex }: { families: Recor
   useEffect(() => {
     let disposed = false;
     let observer: ResizeObserver | null = null;
+    let onTouchStart: ((e: TouchEvent) => void) | null = null;
+    const host = hostRef.current;
+    setFailed(false);
     (async () => {
       const f = await loadFabric();
       if (disposed || !canvasElRef.current || !hostRef.current) return;
       fabricRef.current = f;
       const c = new f.Canvas(canvasElRef.current, {
+        // Toggled per touch below: swipes on empty stage scroll the page, touches on a layer drag it.
         preserveObjectStacking: true, controlsAboveOverlay: true, allowTouchScrolling: false,
         selectionColor: "rgba(212,255,63,0.12)", selectionBorderColor: BRAND, selectionLineWidth: 1.5,
       });
@@ -183,6 +195,13 @@ export function useStudioCanvas({ families, initial, inkHex }: { families: Recor
       observer.observe(hostRef.current);
       for (const ev of ["object:added", "object:removed", "object:modified"] as const) c.on(ev, commit);
       for (const ev of ["selection:created", "selection:updated", "selection:cleared", "object:scaling", "text:changed"] as const) c.on(ev, bump);
+      // Fabric decides on touchstart whether a gesture scrolls the page or edits (it only tracks the moves of an editing touch),
+      // so decide just before it, in the capture phase: a touch on a layer or handle edits; a swipe on empty stage scrolls.
+      // A second finger always belongs to the editor (pinch).
+      onTouchStart = (e: TouchEvent) => {
+        c.allowTouchScrolling = e.touches.length === 1 && !c.findTarget(e);
+      };
+      hostRef.current.addEventListener("touchstart", onTouchStart, { capture: true, passive: true });
       // Fabric sees the lift of the first pinch finger as a tap; release the pinch locks only after it handled that.
       c.on("mouse:up", () => {
         const release = afterPinch.current;
@@ -190,19 +209,25 @@ export function useStudioCanvas({ families, initial, inkHex }: { families: Recor
         afterPinch.current = null;
         setTimeout(release, 0);
       });
-      await load(histories.current.front.present);
+      await load(histories.current[sideRef.current].present);
       if (!disposed) setReady(true);
-    })().catch((err: unknown) => console.error("[studio] editor failed to start", err));
+    })().catch((err: unknown) => {
+      console.error("[studio] editor failed to start", err);
+      if (!disposed) setFailed(true);
+    });
     return () => {
       disposed = true;
       observer?.disconnect();
+      if (onTouchStart) host?.removeEventListener("touchstart", onTouchStart, { capture: true });
       if (commitTimer.current) clearTimeout(commitTimer.current);
       const c = canvasRef.current;
       canvasRef.current = null;
       void c?.dispose();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- initialise exactly once per mount
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initialise once per mount (and again on retry)
+  }, [attempt]);
+
+  const retry = useCallback(() => setAttempt((a) => a + 1), []);
 
   const setSide = useCallback(async (s: DesignSide) => {
     if (s === sideRef.current) return;
@@ -228,7 +253,11 @@ export function useStudioCanvas({ families, initial, inkHex }: { families: Recor
     await load(histories.current[s].present, true);
   }, [flush, load]);
 
-  const full = useCallback(() => (canvasRef.current?.getObjects().length ?? 0) >= MAX_OBJECTS_PER_SIDE, []);
+  const full = useCallback(() => {
+    const isFull = (canvasRef.current?.getObjects().length ?? 0) >= MAX_OBJECTS_PER_SIDE;
+    if (isFull) toast.error(FULL_MESSAGE);
+    return isFull;
+  }, []);
 
   const addToCanvas = useCallback((obj: FabricObject) => {
     const c = canvasRef.current, f = fabricRef.current;
@@ -258,7 +287,13 @@ export function useStudioCanvas({ families, initial, inkHex }: { families: Recor
   const addImage = useCallback(async (url: string) => {
     const f = fabricRef.current;
     if (!f || full()) return;
-    const img = await f.FabricImage.fromURL(url, { crossOrigin: "anonymous" });
+    let img: FabricImage;
+    try {
+      img = await f.FabricImage.fromURL(url, { crossOrigin: "anonymous" });
+    } catch (err) {
+      console.error("[studio] image load failed", err);
+      throw new Error("Could not load that image. Please try again.");
+    }
     img.data = { kind: "image" };
     img.scale(Math.min((PRINT_AREA.width * 0.8) / img.width, (PRINT_AREA.height * 0.8) / img.height));
     addToCanvas(img);
@@ -308,10 +343,15 @@ export function useStudioCanvas({ families, initial, inkHex }: { families: Recor
     if (active.length === 0) return;
     flush();
     c.discardActiveObject();
-    c.remove(...active); // fires object:removed → commit
+    restoring.current = true; // object:removed fires per object: commit once for the whole selection instead
+    try {
+      c.remove(...active);
+    } finally {
+      restoring.current = false;
+    }
     c.requestRenderAll();
-    bump();
-  }, [bump, flush]);
+    commit();
+  }, [commit, flush]);
 
   const duplicateSelected = useCallback(async () => {
     const c = canvasRef.current;
@@ -355,7 +395,7 @@ export function useStudioCanvas({ families, initial, inkHex }: { families: Recor
   const sideJson = useCallback((s: DesignSide): SideJson => {
     flush();
     try {
-      return toSideJson(JSON.parse(histories.current[s].present)) ?? EMPTY_SIDE;
+      return withoutBlankText(toSideJson(JSON.parse(histories.current[s].present)) ?? EMPTY_SIDE);
     } catch {
       return EMPTY_SIDE;
     }
@@ -412,6 +452,8 @@ export function useStudioCanvas({ families, initial, inkHex }: { families: Recor
       if (!c) return;
       const target = e.target as HTMLElement | null;
       if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
+      // Focus on the page body counts as the studio; focus anywhere else (cart drawer, dialogs, header) does not.
+      if (target && target !== document.body && (target.closest('[role="dialog"]') || !target.closest(`[${STUDIO_ROOT_ATTR}]`))) return;
       if ((c.getActiveObject() as Textbox | undefined)?.isEditing) return;
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
@@ -436,7 +478,7 @@ export function useStudioCanvas({ families, initial, inkHex }: { families: Recor
   const activeObjects = c?.getActiveObjects() ?? [];
   const active = activeObjects.length === 1 ? activeObjects[0] : null;
   const other: DesignSide = side === "front" ? "back" : "front";
-  const liveCount = c ? objects.length : sideJsonLength(histories.current[side].present);
+  const liveCount = c ? objects.filter(isPrinted).length : sideJsonLength(histories.current[side].present);
   const counts = { [side]: liveCount, [other]: sideJsonLength(histories.current[other].present) } as Record<DesignSide, number>;
   const layers: LayerInfo[] = objects
     .map((o, index) => ({
@@ -463,7 +505,7 @@ export function useStudioCanvas({ families, initial, inkHex }: { families: Recor
   const history = histories.current[side];
 
   return {
-    hostRef, canvasElRef, ready, side, setSide, counts, layers,
+    hostRef, canvasElRef, ready, failed, retry, side, setSide, counts, layers,
     selectedKind: active ? (isText(active) ? "text" : "image") : null,
     selectedText,
     selectedDpi: active && isImage(active) ? imageDpi(active) : null,

@@ -37,13 +37,13 @@ export function LayersPanel({ layers, onSelect, onForward, onBackward, onRemove 
                 <Icon aria-hidden className={cn("size-4 shrink-0", l.selected ? "text-brand" : "text-text-muted")} />
                 <span className="truncate text-sm">{l.label}</span>
               </button>
-              <button type="button" aria-label="Bring forward" onClick={act(onForward)} disabled={pos === 0} className={iconButton}>
+              <button type="button" aria-label={`Bring ${l.label} forward`} onClick={act(onForward)} disabled={pos === 0} className={iconButton}>
                 <ArrowUp aria-hidden className="size-4" />
               </button>
-              <button type="button" aria-label="Send backward" onClick={act(onBackward)} disabled={pos === layers.length - 1} className={iconButton}>
+              <button type="button" aria-label={`Send ${l.label} backward`} onClick={act(onBackward)} disabled={pos === layers.length - 1} className={iconButton}>
                 <ArrowDown aria-hidden className="size-4" />
               </button>
-              <button type="button" aria-label="Delete layer" onClick={act(onRemove)} className={cn(iconButton, "hover:text-danger")}>
+              <button type="button" aria-label={`Delete ${l.label}`} onClick={act(onRemove)} className={cn(iconButton, "hover:text-danger")}>
                 <Trash2 aria-hidden className="size-4" />
               </button>
             </div>

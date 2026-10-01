@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { submitDesign, uploadAsset } from "@/components/studio/export-design";
+import { exportSide, submitDesign, uploadAsset } from "@/components/studio/export-design";
+import type { FabricModule } from "@/components/studio/fabric-types";
+import { withImageCors, withoutBlankText } from "@/lib/studio/canvas-json";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -57,5 +59,74 @@ describe("uploadAsset", () => {
     await expect(uploadAsset(new File([png()], "a.png"))).rejects.toThrow("File too large");
     globalThis.fetch = vi.fn(async () => new Response("<html>", { status: 502 })) as unknown as typeof fetch;
     await expect(uploadAsset(new File([png()], "a.png"))).rejects.toThrow("Something went wrong. Please try again.");
+  });
+});
+
+/** Stand-in for Fabric's StaticCanvas: records what the print render would see, then fails like a device without canvas memory. */
+function fakeFabric(fail: () => never) {
+  const renders: { caching: unknown[]; clip: unknown; loaded: Record<string, unknown>[] }[] = [];
+  class StaticCanvas {
+    objects: Record<string, unknown>[] = [];
+    loaded: Record<string, unknown>[] = [];
+    clipPath: unknown = undefined;
+    async loadFromJSON(json: { objects: Record<string, unknown>[] }) {
+      this.loaded = json.objects;
+      this.objects = json.objects.map((o) => ({ ...o, objectCaching: true })); // Fabric's default
+    }
+    getObjects() {
+      return this.objects;
+    }
+    toCanvasElement(): never {
+      renders.push({ caching: this.objects.map((o) => o.objectCaching), clip: this.clipPath, loaded: this.loaded });
+      return fail();
+    }
+    async dispose() {}
+  }
+  class Rect {}
+  return { fabric: { StaticCanvas, Rect } as unknown as FabricModule, renders };
+}
+
+const image = { type: "Image", src: "/api/uploads/designs/assets/a.png", data: { kind: "image" } };
+const opts = { families: { anton: "A", bebas: "B", inter: "I", marker: "M" }, colorHex: "#ffffff", side: "front" as const };
+
+describe("exportSide print render", () => {
+  it("draws every object uncached (full resolution), unclipped, with CORS images", async () => {
+    const { fabric, renders } = fakeFabric(() => {
+      throw new Error("out of memory");
+    });
+    await expect(exportSide(fabric, { objects: [image] }, opts)).rejects.toThrow("This device could not prepare the print file");
+    expect(renders).toHaveLength(2); // 3600 × 4800, then the 3072 × 4096 fallback
+    for (const r of renders) {
+      expect(r.caching).toEqual([false]);
+      expect(r.clip).toBeUndefined();
+      expect(r.loaded[0].crossOrigin).toBe("anonymous");
+    }
+  });
+
+  it("reports a tainted canvas as an image problem, not a device limit", async () => {
+    const { fabric } = fakeFabric(() => {
+      throw Object.assign(new Error("tainted"), { name: "SecurityError" });
+    });
+    await expect(exportSide(fabric, { objects: [image] }, opts)).rejects.toThrow("One of your images could not be prepared for print");
+  });
+
+  it("returns null for an empty side", async () => {
+    const { fabric } = fakeFabric(() => {
+      throw new Error("unused");
+    });
+    await expect(exportSide(fabric, { objects: [] }, opts)).resolves.toBeNull();
+  });
+});
+
+describe("side JSON helpers", () => {
+  it("drops blank text layers only", () => {
+    const json = { objects: [{ type: "Textbox", text: "  " }, { type: "Textbox", text: "HI" }, image] };
+    expect(withoutBlankText(json).objects).toEqual([{ type: "Textbox", text: "HI" }, image]);
+  });
+
+  it("adds crossOrigin to images only", () => {
+    const out = withImageCors({ objects: [image, { type: "Textbox", text: "HI" }] }).objects;
+    expect(out[0].crossOrigin).toBe("anonymous");
+    expect(out[1]).not.toHaveProperty("crossOrigin");
   });
 });
