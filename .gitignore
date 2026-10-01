@@ -28,3 +28,8 @@ coverage/
 # standalone/Lighthouse verification builds (Phase 4)
 .next-standalone/
 .next-lh/
+# deployment (Phase 4)
+!deploy/.env.production.example
+deploy/.current-version
+deploy/.previous-version
+.audit/

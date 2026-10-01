@@ -1,0 +1,124 @@
+# Production stack for a single EC2 box. From the repo root:
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d
+# deploy/deploy.sh wraps this. Runbook: docs/deploy/aws-ec2.md
+name: thrift
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-thrift}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-thrift}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    shm_size: 128mb
+    logging: *logging
+    # No `ports:` on purpose: Postgres is reachable only from the other containers.
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SITE_URL: https://${DOMAIN:?Set DOMAIN in deploy/.env}
+        NEXT_PUBLIC_GA_ID: ${NEXT_PUBLIC_GA_ID:-}
+        NEXT_PUBLIC_META_PIXEL_ID: ${NEXT_PUBLIC_META_PIXEL_ID:-}
+        S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+        APP_VERSION: ${APP_VERSION:-dev}
+    image: thrift-app:${APP_VERSION:-dev}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      # connection_limit stays >= 5: refunds hold a connection while calling Razorpay.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-thrift}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-thrift}?schema=public&connection_limit=10
+      NEXT_PUBLIC_SITE_URL: https://${DOMAIN}
+      AUTH_URL: https://${DOMAIN}
+      AUTH_TRUST_HOST: "true"
+      APP_VERSION: ${APP_VERSION:-dev}
+    volumes:
+      - uploads:/app/storage/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    logging: *logging
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    logging: *logging
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/opt/backup/backup.sh"]
+    command: ["loop"]
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-thrift}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-thrift}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_PREFIX: ${BACKUP_S3_PREFIX:-thrift}
+      AWS_REGION: ${AWS_REGION:-ap-south-1}
+    volumes:
+      - ./backup:/opt/backup:ro
+      - backups:/backups
+      - uploads:/uploads:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    logging: *logging
+
+  cron:
+    build: ./cron
+    image: thrift-cron:local
+    restart: unless-stopped
+    command: ["/bin/sh", "/opt/cron/start.sh"]
+    environment:
+      CRON_SECRET: ${CRON_SECRET:?Set CRON_SECRET in deploy/.env}
+      APP_URL: http://app:3000
+      TZ: Asia/Kolkata
+    volumes:
+      - ./crontab:/etc/cron.src/crontab:ro
+      - ./cron:/opt/cron:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    logging: *logging
+
+volumes:
+  pgdata:
+  uploads:
+  backups:
+  caddy_data:
+  caddy_config:

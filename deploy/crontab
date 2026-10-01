@@ -1,0 +1,10 @@
+# Schedule for the `cron` container (busybox crond, TZ=Asia/Kolkata, so times are IST).
+# Each line POSTs /api/cron/<job> on the app container over the internal network; every job is idempotent.
+# min  hour dom mon dow  command
+*/5    *    *   *   *    sh /opt/cron/run-job.sh expire-orders > /proc/1/fd/1 2>&1
+*/30   *    *   *   *    sh /opt/cron/run-job.sh reconcile-payments > /proc/1/fd/1 2>&1
+0      *    *   *   *    sh /opt/cron/run-job.sh low-stock > /proc/1/fd/1 2>&1
+15     *    *   *   *    sh /opt/cron/run-job.sh abandoned-cart > /proc/1/fd/1 2>&1
+0      21   *   *   *    sh /opt/cron/run-job.sh daily-summary > /proc/1/fd/1 2>&1
+0      11   *   *   *    sh /opt/cron/run-job.sh review-request > /proc/1/fd/1 2>&1
+30     3    *   *   *    sh /opt/cron/run-job.sh purge-designs > /proc/1/fd/1 2>&1

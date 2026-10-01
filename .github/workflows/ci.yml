@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: thrift
+          POSTGRES_PASSWORD: thrift
+          POSTGRES_DB: thrift
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U thrift -d thrift"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://thrift:thrift@localhost:5432/thrift
+      AUTH_SECRET: ci-only-secret-ci-only-secret-ci-only-secret
+      AUTH_TRUST_HOST: "true"
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      STORAGE_DRIVER: local
+      EMAIL_DRIVER: console
+      EMAIL_FROM: ci@example.com
+      PAYMENT_PROVIDER: mock
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Create the test database
+        run: PGPASSWORD=thrift psql -h localhost -U thrift -d thrift -c 'CREATE DATABASE thrift_test'
+
+      - run: npm ci
+
+      # The job-level DATABASE_URL would win over .env.test in `npm run db:test:migrate` (dotenv does not override),
+      # so the test database is migrated with an explicit URL. `npm test` itself loads .env.test with override.
+      - name: Migrate
+        run: |
+          npx prisma migrate deploy
+          DATABASE_URL=postgresql://thrift:thrift@localhost:5432/thrift_test npx prisma migrate deploy
+
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Build (standalone, as in the Docker image)
+        run: npm run build
+        env:
+          NEXT_OUTPUT: standalone
+
+      - name: Check the deploy kit
+        run: |
+          cp deploy/.env.production.example deploy/.env
+          docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env config -q
+          rm deploy/.env
+          shellcheck deploy/*.sh
+          shellcheck -s sh docker/entrypoint.sh deploy/cron/*.sh deploy/backup/*.sh
+
+  docker:
+    runs-on: ubuntu-24.04
+    needs: verify
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the production image (not pushed)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          build-args: |
+            NEXT_PUBLIC_SITE_URL=https://ci.example.com
+            APP_VERSION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
