@@ -151,3 +151,17 @@ export function abandonedCartEmail(args: { name: string | null; items: { name: s
     text: `Your bag is saved:\n${args.items.map((i) => `- ${i.name} (${i.colorName} / ${i.size})`).join("\n")}\n${siteUrl()}/cart`,
   };
 }
+
+export interface ReviewRequestItem { name: string; url: string }
+
+export function reviewRequestEmail(args: { name: string | null; orderNumber: string; items: ReviewRequestItem[] }): RenderedEmail {
+  const list = args.items.map((i) => `<li style="margin:0 0 8px"><a href="${e(i.url)}" style="color:#111">${e(i.name)}</a></li>`).join("");
+  return {
+    subject: oneLine(`How is your order ${args.orderNumber}?`),
+    html: layout(
+      `How are you liking it, ${firstName(args.name ?? "")}?`,
+      `<p>Your order <strong>${e(args.orderNumber)}</strong> arrived a few days ago. A quick star rating helps other shoppers pick the right tee.</p><ul style="padding-left:18px">${list}</ul>${button(args.items[0].url, "Rate your order")}`,
+    ),
+    text: `Your order ${args.orderNumber} arrived a few days ago. Rate it:\n${args.items.map((i) => `- ${i.name}: ${i.url}`).join("\n")}`,
+  };
+}

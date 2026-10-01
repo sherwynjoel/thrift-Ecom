@@ -43,6 +43,7 @@ Automations run through `POST /api/cron/<job>` with `Authorization: Bearer $CRON
 | `abandoned-cart` | hourly | one reminder to signed-in shoppers whose bag has been idle 3–48 h |
 | `reconcile-payments` | every 30 min | asks Razorpay about unpaid orders from the last 48 h and marks captured payments paid (lost-webhook safety net) |
 | `purge-designs` | daily, 03:30 IST | deletes designs older than 30 days that are in no bag and no order (with their files), and uploaded studio images older than 24 h that no design uses |
+| `review-request` | daily, 11:00 IST | one email per delivered order, 5–30 days after delivery, asking the customer to rate the products they have not reviewed (Settings → Reviews can turn it off) |
 
 Run one by hand:
 
@@ -50,7 +51,7 @@ Run one by hand:
 curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/expire-orders
 ```
 
-On the EC2 box (`crontab -e`, server clock in UTC; 21:00 IST = 15:30 UTC, 03:30 IST = 22:00 UTC the day before):
+On the EC2 box (`crontab -e`, server clock in UTC; 21:00 IST = 15:30 UTC, 03:30 IST = 22:00 UTC the day before, 11:00 IST = 05:30 UTC):
 
 ```cron
 */5 * * * *  curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/expire-orders >/dev/null
@@ -59,6 +60,7 @@ On the EC2 box (`crontab -e`, server clock in UTC; 21:00 IST = 15:30 UTC, 03:30 
 15 * * * *   curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/abandoned-cart >/dev/null
 */30 * * * * curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/reconcile-payments >/dev/null
 0 22 * * *   curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/purge-designs >/dev/null
+30 5 * * *   curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/review-request >/dev/null
 ```
 
 (Define `CRON_SECRET=…` at the top of the crontab and replace `DOMAIN` with your domain.) Every job is safe to run twice. Emails go to **Admin → Settings → Admin email**.

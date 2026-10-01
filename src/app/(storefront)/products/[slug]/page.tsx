@@ -4,11 +4,15 @@ import { notFound } from "next/navigation";
 import { ProductAccordions } from "@/components/storefront/product-accordions";
 import { ProductPurchase } from "@/components/storefront/product-purchase";
 import { RelatedProducts } from "@/components/storefront/related-products";
+import { ProductReviews } from "@/components/storefront/reviews/product-reviews";
 import { BRAND } from "@/config/brand";
-import { jsonLdScript } from "@/lib/json-ld";
+import { jsonLdScript, productJsonLd } from "@/lib/json-ld";
+import { absoluteUrl } from "@/lib/site-url";
+import { auth } from "@/server/auth";
 import { readPage } from "@/server/content";
 import { NotFoundError } from "@/server/errors";
 import { getProductBySlug, getRelatedProducts } from "@/server/services/catalog";
+import { getRatingSummary, getReviewEligibility, listApprovedReviews } from "@/server/services/reviews";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -34,17 +38,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ProductPage({ params }: Props) {
   const { slug } = await params;
   const product = await load(slug);
-  const [related, shipping, returns] = await Promise.all([getRelatedProducts(product.id, 4), readPage("shipping"), readPage("returns")]);
+  const session = await auth();
+  const [related, shipping, returns, summary, firstPage, eligibility] = await Promise.all([
+    getRelatedProducts(product.id, 4), readPage("shipping"), readPage("returns"),
+    getRatingSummary(product.id), listApprovedReviews(product.id, 1), getReviewEligibility(session?.user?.id ?? null, product.id),
+  ]);
   const crumb = product.collections[0];
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "Product",
-    name: product.name,
-    image: product.images.map((i) => i.url),
-    description: product.description,
-    brand: { "@type": "Brand", name: BRAND.name },
-    offers: { "@type": "Offer", priceCurrency: "INR", price: (product.pricePaise / 100).toFixed(2), availability: product.soldOut ? "https://schema.org/OutOfStock" : "https://schema.org/InStock" },
-  };
+  const jsonLd = productJsonLd({ product, url: absoluteUrl(`/products/${product.slug}`), brandName: BRAND.name, summary, reviews: firstPage.items });
 
   return (
     <div className="container-x py-8 pb-28 lg:pb-10">
@@ -53,8 +53,9 @@ export default async function ProductPage({ params }: Props) {
         {crumb && <> / <Link href={`/collections/${crumb.slug}`} className="hover:text-text">{crumb.name}</Link></>}
         {" / "}<span className="text-text">{product.name}</span>
       </nav>
-      <ProductPurchase product={product} />
+      <ProductPurchase product={product} rating={summary.count > 0 ? { average: summary.average, count: summary.count } : null} />
       <ProductAccordions product={product} shipping={shipping?.body ?? ""} returns={returns?.body ?? ""} />
+      <ProductReviews productId={product.id} slug={product.slug} summary={summary} firstPage={firstPage} eligibility={eligibility} />
       <RelatedProducts products={related} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
     </div>

@@ -40,6 +40,8 @@ export function SettingsForm({ settings }: { settings: StoreSettings }) {
   const [t, setT] = useState<Text>(() => fromSettings(settings));
   const [dailySummaryEnabled, setDaily] = useState(settings.dailySummaryEnabled);
   const [abandonedCartEnabled, setAbandoned] = useState(settings.abandonedCartEnabled);
+  const [autoApproveReviews, setAutoApprove] = useState(settings.autoApproveReviews);
+  const [reviewRequestsEnabled, setReviewRequests] = useState(settings.reviewRequestsEnabled);
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -77,6 +79,8 @@ export function SettingsForm({ settings }: { settings: StoreSettings }) {
       announcementHref: t.announcementHref,
       dailySummaryEnabled,
       abandonedCartEnabled,
+      autoApproveReviews,
+      reviewRequestsEnabled,
     };
     if (Object.keys(local).length) {
       setErrors(local);
@@ -167,6 +171,18 @@ export function SettingsForm({ settings }: { settings: StoreSettings }) {
           <Input id="s-announcement-href" value={t.announcementHref} onChange={set("announcementHref")} inputMode="url" placeholder="/collections/new-drops" autoCapitalize="none" spellCheck={false} className={FIELD} />
           <FieldError errors={errors.announcementHref} />
         </div>
+      </fieldset>
+
+      <fieldset className={FIELDSET}>
+        <legend className={LEGEND}>Reviews</legend>
+        <label className="flex min-h-11 items-center gap-3 text-sm">
+          <input type="checkbox" checked={autoApproveReviews} onChange={(e) => setAutoApprove(e.target.checked)} className="size-5 shrink-0 accent-brand" data-testid="auto-approve-reviews" />
+          Publish 4★ and 5★ reviews immediately (others wait for approval)
+        </label>
+        <label className="flex min-h-11 items-center gap-3 text-sm">
+          <input type="checkbox" checked={reviewRequestsEnabled} onChange={(e) => setReviewRequests(e.target.checked)} className="size-5 shrink-0 accent-brand" data-testid="review-requests-enabled" />
+          Email customers for a review 5 days after delivery
+        </label>
       </fieldset>
 
       <fieldset className={FIELDSET}>

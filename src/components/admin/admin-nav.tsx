@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Boxes, Gift, Images, LayoutDashboard, Layers, Package, Printer, Settings, ShoppingBag, Store, Ticket, Users } from "lucide-react";
+import { Boxes, Gift, Images, LayoutDashboard, Layers, Package, Printer, Settings, ShoppingBag, Star, Store, Ticket, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ITEMS = [
@@ -13,13 +13,14 @@ const ITEMS = [
   { href: "/admin/collections", label: "Collections", icon: Layers },
   { href: "/admin/inventory", label: "Inventory", icon: Boxes },
   { href: "/admin/customers", label: "Customers", icon: Users },
+  { href: "/admin/reviews", label: "Reviews", icon: Star },
   { href: "/admin/coupons", label: "Coupons", icon: Ticket },
   { href: "/admin/offers", label: "Offers", icon: Gift },
   { href: "/admin/banners", label: "Banners", icon: Images },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
-export function AdminNav({ toShipCount, printQueueCount }: { toShipCount: number; printQueueCount: number }) {
+export function AdminNav({ toShipCount, printQueueCount, pendingReviewCount }: { toShipCount: number; printQueueCount: number; pendingReviewCount: number }) {
   const pathname = usePathname();
   return (
     <nav className="flex gap-1 overflow-x-auto whitespace-nowrap pb-1 lg:flex-col lg:overflow-visible lg:whitespace-normal lg:pb-0" aria-label="Admin">
@@ -39,6 +40,12 @@ export function AdminNav({ toShipCount, printQueueCount }: { toShipCount: number
               <span className="ml-auto rounded-full bg-brand px-2 py-0.5 text-xs font-medium text-brand-ink" data-testid="print-queue-badge">
                 <span className="sr-only">To print: </span>
                 {printQueueCount}
+              </span>
+            )}
+            {href === "/admin/reviews" && pendingReviewCount > 0 && (
+              <span className="ml-auto rounded-full bg-brand px-2 py-0.5 text-xs font-medium text-brand-ink" data-testid="reviews-badge">
+                <span className="sr-only">Waiting for approval: </span>
+                {pendingReviewCount}
               </span>
             )}
           </Link>

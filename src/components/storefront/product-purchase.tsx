@@ -11,17 +11,19 @@ import { BRAND } from "@/config/brand";
 import { MAX_QTY_PER_LINE } from "@/lib/catalog-types";
 import { colorsOf, defaultColor, sizesFor } from "@/lib/variant-matrix";
 import { formatPaise } from "@/lib/money";
+import { formatRating } from "@/lib/rating";
 import { cn } from "@/lib/utils";
 import type { ProductDetail } from "@/server/services/catalog";
 import { useCartUI } from "./cart-ui";
 import { Gallery } from "./gallery";
 import { Price } from "./price";
+import { RatingStars } from "./reviews/rating-stars";
 import { SizeGuide } from "./size-guide";
 import { WishlistButton } from "./wishlist-button";
 
 const FIT_LABEL: Record<ProductDetail["fit"], string> = { OVERSIZED: "Oversized fit", REGULAR: "Regular fit", RELAXED: "Relaxed fit" };
 
-export function ProductPurchase({ product }: { product: ProductDetail }) {
+export function ProductPurchase({ product, rating }: { product: ProductDetail; rating: { average: number; count: number } | null }) {
   const colors = colorsOf(product.variants);
   const [color, setColor] = useState<string | null>(defaultColor(product.variants));
   const [size, setSize] = useState<string | null>(null);
@@ -68,6 +70,11 @@ export function ProductPurchase({ product }: { product: ProductDetail }) {
           <h1 className="mt-2 text-4xl md:text-5xl">{product.name}</h1>
           <div className="mt-3"><Price pricePaise={pricePaise} compareAtPricePaise={product.compareAtPricePaise} size="lg" /></div>
           <p className="text-xs text-text-muted">Inclusive of all taxes</p>
+          {rating && (
+            <a href="#reviews" className="inline-flex min-h-11 items-center gap-2 text-sm text-text-muted hover:text-text" data-testid="rating-link">
+              <RatingStars rating={rating.average} /> {formatRating(rating.average)} ({rating.count})
+            </a>
+          )}
         </div>
 
         {colors.length > 0 && (
