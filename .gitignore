@@ -24,3 +24,7 @@ coverage/
 # alternate dev build dir (NEXT_DIST_DIR)
 .next-dev/
 .next-e2e/
+
+# standalone/Lighthouse verification builds (Phase 4)
+.next-standalone/
+.next-lh/
