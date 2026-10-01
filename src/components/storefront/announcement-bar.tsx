@@ -1,28 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { X } from "lucide-react";
+import { ANN_DISMISSED_COOKIE, announcementHash } from "@/lib/announcement-cookie";
 import { isExternalHref, isSafeHref } from "@/lib/safe-href";
 import type { Announcement } from "@/server/services/banners";
 
-const KEY = "announcement-dismissed";
 const BAR = "flex min-h-11 flex-1 items-center justify-center py-2 text-center text-sm font-medium";
 
-/** Dismissal lasts for the browser session and only for this exact text, so a new announcement shows again. */
+/**
+ * Dismissal lasts for the browser session and only for this exact text, so a new announcement shows
+ * again. The layout already hid this bar server-side when the cookie was set, so there is nothing to
+ * check on mount here — only the click handler needs to write it.
+ */
 export function AnnouncementBar({ announcement }: { announcement: Announcement }) {
   const [hidden, setHidden] = useState(false);
-  useEffect(() => {
-    try {
-      if (sessionStorage.getItem(KEY) === announcement.text) setHidden(true);
-    } catch {}
-  }, [announcement.text]);
   if (hidden) return null;
 
   const dismiss = () => {
     setHidden(true);
     try {
-      sessionStorage.setItem(KEY, announcement.text);
+      document.cookie = `${ANN_DISMISSED_COOKIE}=${announcementHash(announcement.text)}; Path=/; SameSite=Lax`;
     } catch {}
   };
   const text = <span className="line-clamp-2">{announcement.text}</span>;

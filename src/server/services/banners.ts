@@ -60,16 +60,16 @@ async function removeFiles(keys: (string | null)[]): Promise<void> {
 }
 
 export async function getLiveBanners(now: Date = new Date()): Promise<{ hero: BannerView[]; strip: BannerView[] }> {
+  // Coarse query (just `active`), then the exact live-window rule is bannerState's alone so it isn't
+  // duplicated here as a second Prisma where-clause.
   const rows = await db.banner.findMany({
-    where: {
-      active: true,
-      AND: [{ OR: [{ startsAt: null }, { startsAt: { lte: now } }] }, { OR: [{ endsAt: null }, { endsAt: { gt: now } }] }],
-    },
+    where: { active: true },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
+  const live = rows.filter((b) => bannerState(b, now) === "live");
   return {
-    hero: rows.filter((b) => b.placement === "HERO" && b.imageKey).map(toView),
-    strip: rows.filter((b) => b.placement === "STRIP").map(toView),
+    hero: live.filter((b) => b.placement === "HERO" && b.imageKey).map(toView),
+    strip: live.filter((b) => b.placement === "STRIP").map(toView),
   };
 }
 

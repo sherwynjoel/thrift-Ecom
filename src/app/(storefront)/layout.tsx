@@ -1,21 +1,29 @@
 import "lenis/dist/lenis.css";
+import { cookies } from "next/headers";
 import { LenisProvider, ReducedMotionConfig } from "@/components/motion";
 import { CartDrawer } from "@/components/storefront/cart-drawer";
 import { CartPanel } from "@/components/storefront/cart-panel";
 import { AnnouncementBar } from "@/components/storefront/announcement-bar";
 import { Footer } from "@/components/storefront/footer";
 import { Header } from "@/components/storefront/header";
+import { ANN_DISMISSED_COOKIE, announcementHash } from "@/lib/announcement-cookie";
 import { auth } from "@/server/auth";
 import { getCurrentCart, getCurrentCartPreview } from "@/server/cart-ref";
 import { getAnnouncement } from "@/server/services/banners";
 
 export default async function StorefrontLayout({ children }: { children: React.ReactNode }) {
-  const [session, cart, announcement] = await Promise.all([auth(), getCurrentCart(), getAnnouncement()]);
+  const [session, cart, announcement, dismissedHash] = await Promise.all([
+    auth(),
+    getCurrentCart(),
+    getAnnouncement(),
+    cookies().then((store) => store.get(ANN_DISMISSED_COOKIE)?.value ?? null),
+  ]);
+  const showAnnouncement = announcement && dismissedHash !== announcementHash(announcement.text);
   const preview = cart.itemCount > 0 ? await getCurrentCartPreview() : null;
   return (
     <ReducedMotionConfig>
       <LenisProvider>
-        {announcement && <AnnouncementBar announcement={announcement} />}
+        {showAnnouncement && <AnnouncementBar announcement={announcement} />}
         <Header cartCount={cart.itemCount} isLoggedIn={Boolean(session?.user?.id)} />
         <main className="min-h-[70dvh]">{children}</main>
         <Footer />
