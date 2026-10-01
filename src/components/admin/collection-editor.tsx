@@ -82,8 +82,8 @@ export function CollectionEditor({ collection }: { collection: AdminCollectionDe
           <FieldError errors={errors.description} />
         </div>
         <div className="flex flex-wrap items-center gap-6 text-sm">
-          <label className="flex min-h-11 items-center gap-3"><input type="checkbox" checked={isActive} onChange={(e) => setActive(e.target.checked)} className="size-5 accent-brand" />Visible on the store</label>
-          <label className="flex min-h-11 items-center gap-3"><input type="checkbox" checked={isFeatured} onChange={(e) => setFeatured(e.target.checked)} className="size-5 accent-brand" />Featured on the home page</label>
+          <label className="flex max-lg:min-h-11 items-center gap-3"><input type="checkbox" checked={isActive} onChange={(e) => setActive(e.target.checked)} className="size-5 accent-brand" />Visible on the store</label>
+          <label className="flex max-lg:min-h-11 items-center gap-3"><input type="checkbox" checked={isFeatured} onChange={(e) => setFeatured(e.target.checked)} className="size-5 accent-brand" />Featured on the home page</label>
           <div>
             <label htmlFor="c-order" className="flex items-center gap-2">Order<input id="c-order" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} inputMode="numeric" className="h-11 w-16 lg:h-8 rounded-md border border-border bg-bg px-2" /></label>
             <FieldError errors={errors.sortOrder} />

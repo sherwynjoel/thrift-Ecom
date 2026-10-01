@@ -36,6 +36,7 @@ const nextConfig: NextConfig = {
           dev: process.env.NODE_ENV !== "production",
           https: siteUrl.startsWith("https://"),
           s3PublicBaseUrl: process.env.S3_PUBLIC_BASE_URL,
+          gaConfigured: Boolean(process.env.NEXT_PUBLIC_GA_ID),
         }),
       },
     ];

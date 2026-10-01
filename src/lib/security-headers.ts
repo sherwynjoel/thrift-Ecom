@@ -3,7 +3,7 @@
 /** Every path except user uploads and the image optimizer, which send their own restrictive image CSP. */
 export const SECURITY_HEADER_SOURCE = "/((?!api/uploads/|_next/image).*)";
 
-export interface CspOptions { dev: boolean; https: boolean; s3PublicBaseUrl?: string | null }
+export interface CspOptions { dev: boolean; https: boolean; s3PublicBaseUrl?: string | null; gaConfigured?: boolean }
 
 /** The checkout script itself always loads from this exact host. */
 const RAZORPAY_SCRIPT = "https://checkout.razorpay.com";
@@ -12,6 +12,8 @@ const RAZORPAY_SCRIPT = "https://checkout.razorpay.com";
  * a wildcard avoids refusing whichever one they're using this week. */
 const RAZORPAY_ANY = "https://*.razorpay.com";
 const GOOGLE = ["https://www.googletagmanager.com", "https://www.google-analytics.com", "https://*.google-analytics.com", "https://*.analytics.google.com"];
+/** Google Signals / Ads Linking beacons, only relevant once GA4 is configured. */
+const GOOGLE_ADS = ["https://www.google.com", "https://*.g.doubleclick.net"];
 const META = ["https://connect.facebook.net", "https://www.facebook.com"];
 
 function originOf(url?: string | null): string | null {
@@ -24,11 +26,11 @@ function originOf(url?: string | null): string | null {
   }
 }
 
-export function buildCsp({ dev, https, s3PublicBaseUrl }: CspOptions): string {
+export function buildCsp({ dev, https, s3PublicBaseUrl, gaConfigured }: CspOptions): string {
   const s3 = originOf(s3PublicBaseUrl);
   const directives: [string, string[]][] = [
     ["default-src", ["'self'"]],
-    ["script-src", ["'self'", "'unsafe-inline'", ...(dev ? ["'unsafe-eval'"] : []), RAZORPAY_SCRIPT, "https://www.googletagmanager.com", "https://connect.facebook.net"]],
+    ["script-src", ["'self'", "'unsafe-inline'", ...(dev ? ["'unsafe-eval'"] : []), RAZORPAY_SCRIPT, RAZORPAY_ANY, "https://www.googletagmanager.com", "https://connect.facebook.net"]],
     ["style-src", ["'self'", "'unsafe-inline'"]],
     // "https:" already covers the S3 origin in production; adding it explicitly also allows a
     // plain-http dev/MinIO bucket (S3_PUBLIC_BASE_URL=http://localhost:9000/...). The studio loads
@@ -36,13 +38,13 @@ export function buildCsp({ dev, https, s3PublicBaseUrl }: CspOptions): string {
     // this belongs in img-src, not connect-src.
     ["img-src", ["'self'", "data:", "blob:", "https:", ...(s3 ? [s3] : [])]],
     ["font-src", ["'self'", "data:"]],
-    ["connect-src", ["'self'", RAZORPAY_ANY, ...GOOGLE, ...META, ...(dev ? ["ws:", "wss:"] : [])]],
+    ["connect-src", ["'self'", RAZORPAY_ANY, ...GOOGLE, ...(gaConfigured ? GOOGLE_ADS : []), ...META, ...(dev ? ["ws:", "wss:"] : [])]],
     ["frame-src", ["'self'", RAZORPAY_ANY]],
     ["worker-src", ["'self'", "blob:"]],
     ["media-src", ["'self'", "data:", "blob:"]],
     ["object-src", ["'none'"]],
     ["base-uri", ["'self'"]],
-    ["form-action", ["'self'", "https://api.razorpay.com"]],
+    ["form-action", ["'self'", "https://api.razorpay.com", "https://accounts.google.com"]],
     ["frame-ancestors", ["'none'"]],
   ];
   const parts = directives.map(([name, values]) => `${name} ${values.join(" ")}`);

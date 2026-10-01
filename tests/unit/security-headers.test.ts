@@ -7,13 +7,23 @@ describe("security headers", () => {
   it("allows Razorpay checkout (its script host, and a wildcard for the hosts it rotates for telemetry/iframes) and the analytics hosts", () => {
     const csp = buildCsp({ dev: false, https: true });
     expect(directive(csp, "script-src")).toContain("https://checkout.razorpay.com");
+    expect(directive(csp, "script-src")).toContain("https://*.razorpay.com");
     expect(directive(csp, "frame-src")).toContain("https://*.razorpay.com");
     expect(directive(csp, "connect-src")).toContain("https://*.razorpay.com");
     expect(directive(csp, "connect-src")).toContain("https://*.google-analytics.com");
     expect(directive(csp, "script-src")).toContain("https://connect.facebook.net");
-    expect(directive(csp, "form-action")).toBe("form-action 'self' https://api.razorpay.com");
+    expect(directive(csp, "form-action")).toBe("form-action 'self' https://api.razorpay.com https://accounts.google.com");
     expect(directive(csp, "frame-ancestors")).toBe("frame-ancestors 'none'");
     expect(directive(csp, "object-src")).toBe("object-src 'none'");
+  });
+
+  it("adds the Google Ads/doubleclick beacon hosts to connect-src only when GA is configured", () => {
+    const off = buildCsp({ dev: false, https: true });
+    expect(directive(off, "connect-src")).not.toContain("https://www.google.com");
+    expect(directive(off, "connect-src")).not.toContain("https://*.g.doubleclick.net");
+    const on = buildCsp({ dev: false, https: true, gaConfigured: true });
+    expect(directive(on, "connect-src")).toContain("https://www.google.com");
+    expect(directive(on, "connect-src")).toContain("https://*.g.doubleclick.net");
   });
 
   it("only relaxes for development and only upgrades requests behind https", () => {

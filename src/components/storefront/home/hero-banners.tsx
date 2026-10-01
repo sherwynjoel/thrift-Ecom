@@ -11,14 +11,24 @@ import type { BannerView } from "@/server/services/banners";
 const AUTO_ADVANCE_MS = 6000;
 const CTA = "mt-6 inline-flex self-start min-h-11 items-center justify-center rounded-full bg-brand px-8 py-3 font-display text-xl tracking-wide text-brand-ink transition-colors hover:bg-[#e6ff7a]";
 
-function Slide({ banner, index, total }: { banner: BannerView; index: number; total: number }) {
+function Slide({ banner, index, total, active }: { banner: BannerView; index: number; total: number; active: boolean }) {
   const common = { alt: "", sizes: "100vw", priority: index === 0, quality: 80 };
   const desktop = getImageProps({ ...common, src: banner.imageUrl!, width: 1920, height: 820 }).props;
   const mobile = getImageProps({ ...common, src: banner.mobileImageUrl ?? banner.imageUrl!, width: 1080, height: 1350 }).props;
   const cta = banner.ctaHref && banner.ctaLabel && isSafeHref(banner.ctaHref) ? { href: banner.ctaHref, label: banner.ctaLabel } : null;
   const testId = index === 0 ? "hero-cta" : undefined;
   return (
-    <div role="group" aria-roledescription="slide" aria-label={`${index + 1} of ${total}`} className="relative h-full w-full shrink-0 snap-start" data-testid="hero-slide">
+    <div
+      role="group"
+      aria-roledescription="slide"
+      aria-label={`${index + 1} of ${total}`}
+      className="relative h-full w-full shrink-0 snap-start"
+      data-testid="hero-slide"
+      // Off-screen slides stay in the DOM for the scroll-snap track; `inert` drops them from
+      // tab order and the accessibility tree so a screen reader doesn't read every slide at once.
+      inert={!active}
+      aria-hidden={!active}
+    >
       <picture>
         <source media="(min-width: 768px)" srcSet={desktop.srcSet} sizes="100vw" />
         <img {...mobile} alt="" className="absolute inset-0 size-full object-cover" />
@@ -75,7 +85,7 @@ export function HeroBanners({ banners }: { banners: BannerView[] }) {
         className="flex h-[78dvh] max-h-[760px] min-h-[480px] snap-x snap-mandatory overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         aria-live={paused || reduced ? "polite" : "off"}
       >
-        {banners.map((b, i) => <Slide key={b.id} banner={b} index={i} total={banners.length} />)}
+        {banners.map((b, i) => <Slide key={b.id} banner={b} index={i} total={banners.length} active={i === active} />)}
       </div>
       {banners.length > 1 && (
         <div className="absolute inset-x-0 bottom-1 flex justify-center">

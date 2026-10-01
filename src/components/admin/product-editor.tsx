@@ -88,7 +88,7 @@ export function ProductEditor({ product, collections }: { product: AdminProductD
           <select id="p-status" value={state.status} onChange={(e) => set("status", e.target.value as ProductFormState["status"])} className="h-11 w-full rounded-md border border-border bg-bg px-3 text-sm lg:h-9" data-testid="status-select">
             {STATUSES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
-          <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" checked={state.isCustomizable} onChange={(e) => set("isCustomizable", e.target.checked)} className="size-5 accent-brand" />Customizable blank (for the design tool)</label>
+          <label className="flex max-lg:min-h-11 items-center gap-3 text-sm"><input type="checkbox" checked={state.isCustomizable} onChange={(e) => set("isCustomizable", e.target.checked)} className="size-5 accent-brand" />Customizable blank (for the design tool)</label>
           {/* Fixed to the bottom of the viewport below `lg` (so Save is reachable without scrolling past
               the whole variant matrix on a phone), and back to a normal inline button at `lg`+. Only one
               button is ever mounted, so data-testid="save-product" never matches twice. */}
@@ -100,7 +100,7 @@ export function ProductEditor({ product, collections }: { product: AdminProductD
           <h2 className="text-xl">Collections</h2>
           {collections.length === 0 && <p className="text-sm text-text-muted">No collections yet.</p>}
           {collections.map((c) => (
-            <label key={c.id} className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" checked={state.collectionIds.includes(c.id)} onChange={() => toggleCollection(c.id)} className="size-5 accent-brand" />{c.name}</label>
+            <label key={c.id} className="flex max-lg:min-h-11 items-center gap-3 text-sm"><input type="checkbox" checked={state.collectionIds.includes(c.id)} onChange={() => toggleCollection(c.id)} className="size-5 accent-brand" />{c.name}</label>
           ))}
           <FieldError errors={errors.collectionIds} />
         </section>

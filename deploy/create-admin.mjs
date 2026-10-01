@@ -1,4 +1,5 @@
 // Creates the store admin, or promotes an existing user to ADMIN and resets its password.
+// Also ensures the 3 collections the storefront nav/CTAs link to exist (see NAV_COLLECTIONS below).
 // Runs inside the app container (see deploy/seed-admin.sh):
 //   printf '%s\n%s\n' "$EMAIL" "$PASSWORD" | node /opt/tools/create-admin.mjs --stdin
 // or with ADMIN_EMAIL / ADMIN_PASSWORD in the environment. APP_DIR (default /app) locates the app's Prisma client,
@@ -30,6 +31,15 @@ if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail("enter a valid email address
 if (password.length < 12) fail("the password must be at least 12 characters");
 if (password.length > 128) fail("the password must be at most 128 characters");
 
+// Slugs the storefront nav/CTAs link to (src/config/site.ts, new-drops.tsx): a fresh production
+// database has no collections, so these 404 on launch day unless something creates them first.
+// Idempotent and non-destructive: existing rows (e.g. renamed by the owner) are left alone.
+const NAV_COLLECTIONS = [
+  { slug: "new-drops", name: "New Drops" },
+  { slug: "oversized-tees", name: "Oversized Tees" },
+  { slug: "regular-fit-tees", name: "Regular Fit" },
+];
+
 const db = new PrismaClient();
 try {
   const passwordHash = await hash(password, 10);
@@ -39,7 +49,11 @@ try {
     create: { email, name: "Admin", role: "ADMIN", passwordHash },
     select: { email: true, role: true },
   });
+  for (const c of NAV_COLLECTIONS) {
+    await db.collection.upsert({ where: { slug: c.slug }, update: {}, create: c });
+  }
   console.log(`Admin ready: ${user.email} (${user.role}). Sign in at /login, then open /admin.`);
+  console.log(`Nav collections ensured: ${NAV_COLLECTIONS.map((c) => c.slug).join(", ")}.`);
 } catch (err) {
   fail(err instanceof Error ? err.message : String(err));
 } finally {

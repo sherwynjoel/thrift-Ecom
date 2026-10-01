@@ -59,7 +59,7 @@ function Filters({ facets, showClear = true }: { facets: Facets; showClear?: boo
       <Group title="Fit">
         <div className="flex flex-col text-sm">
           {facets.fits.map((f) => (
-            <label key={f} className="flex min-h-11 items-center gap-3">
+            <label key={f} className="flex max-lg:min-h-11 items-center gap-3">
               <input type="checkbox" checked={has("fit", f)} onChange={() => go(toggleListParam(params, "fit", f))} className="size-5 accent-brand" />
               {FIT_LABEL[f] ?? f}
             </label>

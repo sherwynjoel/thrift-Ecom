@@ -137,6 +137,8 @@ nano deploy/.env
 
 Save with `Ctrl+O`, `Enter`, `Ctrl+X`.
 
+**Before the first deploy, set your brand name and contact details** — the store ships with placeholders (`YOUR BRAND`, `support@example.com`) that get baked into pages, emails and the sitemap the moment Google can crawl the site. Edit `src/config/brand.ts` (`name`, `supportEmail`, `social.instagram`, `social.youtube`) and `content/pages/contact.md` (the support email), commit, then deploy. Fixing this after launch needs a rebuild (`bash deploy/deploy.sh --no-pull`).
+
 ## 8. First deploy
 
 ```bash
@@ -151,7 +153,7 @@ The first build takes 5–10 minutes on a t3.small; later builds reuse the layer
 bash deploy/seed-admin.sh you@yourdomain.com
 ```
 
-Type a password (12+ characters) twice. Sign in at `https://shop.example.com/login`, open `/admin` → **Settings** and fill in the business name, address, state, GSTIN, admin email and WhatsApp number. Then add collections, products and homepage banners.
+Type a password (12+ characters) twice. This also creates the three collections the storefront nav and homepage CTAs link to (`new-drops`, `oversized-tees`, `regular-fit-tees`) if they don't already exist, so those links don't 404 before you've added your own. Sign in at `https://shop.example.com/login`, open `/admin` → **Settings** and fill in the business name, address, state, GSTIN, admin email and WhatsApp number. Then add products to those collections (or rename/add more) and homepage banners.
 
 ## 10. Razorpay ("Go live" step 1)
 

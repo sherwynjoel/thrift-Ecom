@@ -81,8 +81,8 @@ export async function createReview(userId: string, productId: string, input: unk
   if (!parsed.success) throw new ValidationError(zodFieldErrors(parsed.error));
   const limit = rateLimit(`review:${userId}`, 5, HOUR);
   if (!limit.ok) throw new RateLimitedError(limit.retryAfterSec);
-  const eligibility = await getReviewEligibility(userId, productId);
-  if (eligibility.blocker === "already-reviewed") throw new ConflictError("You have already reviewed this product");
+  const existing = await db.review.findUnique({ where: { productId_userId: { productId, userId } }, select: { id: true } });
+  if (existing) throw new ConflictError("You have already reviewed this product");
   const item = await eligibleItem(userId, productId);
   if (!item) throw new ForbiddenError("Only customers whose order was delivered can review this product");
   const { autoApproveReviews } = await getSettings();

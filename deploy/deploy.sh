@@ -41,6 +41,9 @@ preflight() {
     *) die "EMAIL_DRIVER must be smtp or ses in $ENV_FILE (see docs/deploy/aws-ec2.md → Email)" ;;
   esac
   need EMAIL_FROM
+  if grep -qE '^(ACME_EMAIL|EMAIL_FROM)=.*@example\.com' "$ENV_FILE"; then
+    die "replace the example.com placeholder in ACME_EMAIL/EMAIL_FROM in $ENV_FILE with your real address"
+  fi
   "${COMPOSE[@]}" config -q || die "the compose configuration is invalid"
 }
 

@@ -6,8 +6,8 @@ Custom T-shirt e-commerce: animated storefront, persistent cart, accounts, admin
 
 Everything else is already built: the Docker image, the Compose stack (app, Postgres, Caddy with automatic HTTPS, daily backups, scheduled jobs) and a full runbook. Only two things are left for the store owner.
 
-1. **Razorpay keys.** In the Razorpay dashboard, create API keys and a webhook to `https://<your-domain>/api/webhooks/razorpay` for events **payment.captured**, **order.paid** and **payment.failed**. Put `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` and `RAZORPAY_WEBHOOK_SECRET` into `deploy/.env` and run `bash deploy/deploy.sh --restart`. Start in **Test mode**; switch to **Live** keys and a live webhook after KYC ([docs/deploy/aws-ec2.md](docs/deploy/aws-ec2.md), step 10).
-2. **SSH access to a server.** Launch an Ubuntu 24.04 EC2 instance (Mumbai), point the domain at it, then `sudo bash deploy/setup-ec2.sh`, fill in `deploy/.env`, `bash deploy/deploy.sh`, `bash deploy/seed-admin.sh you@yourdomain.com`. Every click and command is in [docs/deploy/aws-ec2.md](docs/deploy/aws-ec2.md) (about 30–45 minutes, steps 2–9).
+1. **Razorpay keys, plus an email sender.** In the Razorpay dashboard, create **Test mode** API keys and a webhook to `https://<your-domain>/api/webhooks/razorpay` for events **payment.captured**, **order.paid** and **payment.failed**. Also get SMTP credentials (or SES) for order emails. The store refuses to start without both. Put `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` and the email settings into `deploy/.env` in step 2 below. Switch to **Live** keys and a live webhook after KYC ([docs/deploy/aws-ec2.md](docs/deploy/aws-ec2.md), step 10); `--restart` is for that later swap, not the first deploy.
+2. **SSH access to a server.** Launch an Ubuntu 24.04 EC2 instance (Mumbai), point the domain at it, then `sudo bash deploy/setup-ec2.sh`, fill in `deploy/.env` (the keys and email settings from step 1), `bash deploy/deploy.sh`, `bash deploy/seed-admin.sh you@yourdomain.com`. Every click and command is in [docs/deploy/aws-ec2.md](docs/deploy/aws-ec2.md) (about 30–45 minutes, steps 2–9).
 
 **Environment variables that must be set** (checked at server start — see [Environment variables](#environment-variables)): `AUTH_SECRET`; `PAYMENT_PROVIDER=razorpay` with `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`; `CRON_SECRET` (32+ characters); `EMAIL_DRIVER=smtp` (with `SMTP_URL`, `EMAIL_FROM`) or `EMAIL_DRIVER=ses` (with `AWS_REGION`, `EMAIL_FROM`); `NEXT_PUBLIC_SITE_URL` as a real `https://` address. The server refuses to start in production if any of these is missing or wrong.
 
@@ -17,6 +17,7 @@ Everything else is already built: the Docker image, the Compose stack (app, Post
 
 **Before launch:**
 
+- Set your real brand name, support email and social links in `src/config/brand.ts`, and the support email in `content/pages/contact.md` — the store ships with placeholders (`YOUR BRAND`, `support@example.com`). These are baked in at build time, so fixing them later needs `bash deploy/deploy.sh --no-pull`.
 - Try the design studio's touch gestures on a real iPhone (Safari) and a real Android phone (Chrome) — see [Design studio and print queue](#design-studio-and-print-queue).
 - Confirm each carrier's tracking URL with a real AWB (`src/lib/carriers.ts`).
 - Fill in seller name, address, state and GSTIN in **Admin → Settings**.
@@ -33,6 +34,8 @@ Everything else is already built: the Docker image, the Compose stack (app, Post
 4. `npm run db:migrate` then `npm run db:seed`
 5. `npm run db:test:migrate` — applies migrations to the `thrift_test` database used by `npm test`
 6. `npm run dev` — http://localhost:3000
+
+Phase 4 needs no new local setup.
 
 ## Payments (Razorpay)
 
@@ -74,19 +77,7 @@ Run one by hand:
 curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/expire-orders
 ```
 
-On the EC2 box (`crontab -e`, server clock in UTC; 21:00 IST = 15:30 UTC, 03:30 IST = 22:00 UTC the day before, 11:00 IST = 05:30 UTC):
-
-```cron
-*/5 * * * *  curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/expire-orders >/dev/null
-0 * * * *    curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/low-stock >/dev/null
-30 15 * * *  curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/daily-summary >/dev/null
-15 * * * *   curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/abandoned-cart >/dev/null
-*/30 * * * * curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/reconcile-payments >/dev/null
-0 22 * * *   curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/purge-designs >/dev/null
-30 5 * * *   curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/review-request >/dev/null
-```
-
-(Define `CRON_SECRET=…` at the top of the crontab and replace `DOMAIN` with your domain.) Every job is safe to run twice. Emails go to **Admin → Settings → Admin email**.
+In production the `cron` container runs `deploy/crontab` (IST times) against the app over the internal network; no host crontab is needed. Every job is safe to run twice. Emails go to **Admin → Settings → Admin email**.
 
 ## Email
 
@@ -118,6 +109,22 @@ On the EC2 box (`crontab -e`, server clock in UTC; 21:00 IST = 15:30 UTC, 03:30 
 - The only new dependency is `fabric` (v6), loaded in the browser on the studio page only.
 - **Before launch, try the studio on a real iPhone (Safari) and a real Android phone (Chrome):** one-finger drag on a design, two-finger pinch/rotate, and that swiping on the empty area around the shirt still scrolls the page. The e2e tests run in desktop Chromium with touch emulation and cannot prove real touch gestures.
 
+## Deployment
+
+The production stack (`deploy/docker-compose.prod.yml`) runs five containers on one EC2 box: `app` (the Next.js server), `db` (Postgres, with the `pgdata` volume), `caddy` (automatic HTTPS, fronting `app`), `cron` (a tiny alpine sidecar running `deploy/crontab` against `app` over the internal network) and `backup` (daily dumps of the database plus the `uploads` volume into the `backups` volume). Logs stay in each container's capped `json-file` log (10 MB × 3 files); backups live under the `backups` volume, listable with `bash deploy/restore.sh list`. Three commands cover everyday operations: `bash deploy/deploy.sh` (pull and deploy the latest commit on `main`), `bash deploy/deploy.sh --restart` (re-read `deploy/.env` and recreate `app`, `cron` and `backup` without rebuilding, e.g. after rotating a secret), and `bash deploy/deploy.sh --rollback <tag>` (run a previously built image). Full runbook: [docs/deploy/aws-ec2.md](docs/deploy/aws-ec2.md). `NEXT_PUBLIC_*` variables and `S3_PUBLIC_BASE_URL` are baked into the app image at build time, so changing any of them needs a rebuild: `bash deploy/deploy.sh --no-pull`.
+
+## Mobile audit
+
+`npm run audit:mobile` runs every storefront, customer and admin route at 360 × 740 and 390 × 844, writing a screenshot per route plus a `report.json` to `.audit/mobile/<viewport>/` (gitignored). `npx playwright test --project=mobile-360` is the enforced gate: it fails if any route scrolls sideways or has a tap target under 44 px.
+
+## Analytics
+
+Two optional, independent scripts: `NEXT_PUBLIC_GA_ID` (GA4) and `NEXT_PUBLIC_META_PIXEL_ID` (Meta Pixel). Each script loads only when its id is set, and only on the storefront — the admin is never tracked. Tracked events: `view_item`, `add_to_cart`, `begin_checkout`, `purchase` (Meta Pixel: `ViewContent`, `AddToCart`, `InitiateCheckout`, `Purchase`).
+
+## Security headers
+
+`src/lib/security-headers.ts` builds the Content-Security-Policy and the other hardening headers (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`) applied by `next.config.ts`; the CSP allows the Razorpay and configured analytics hosts and nothing else. HSTS is added by Caddy, not Next.js. `/api/health` is a plain uptime-check endpoint (no auth) for load balancers and monitors.
+
 ## Environment variables
 
 In production (`NODE_ENV=production`, i.e. `npm run start`) the server **refuses to start** unless: `PAYMENT_PROVIDER=razorpay` with all three `RAZORPAY_*` values, `CRON_SECRET` of at least 32 characters, `EMAIL_DRIVER` of `smtp` (with `SMTP_URL`, `EMAIL_FROM`) or `ses` (with `AWS_REGION`, `EMAIL_FROM`), `NEXT_PUBLIC_SITE_URL` an `https://` address that is not localhost, and `AUTH_SECRET`. The log lists every missing item. `next build` and `npm run dev` are not checked (`src/instrumentation.ts`, `src/server/env-check.ts`).
@@ -135,6 +142,10 @@ In production (`NODE_ENV=production`, i.e. `npm run start`) the server **refuses
 | `CRON_SECRET` | production (≥ 32 characters) | protects `/api/cron/*` |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | seeding, e2e | seeded admin |
 | `NEXT_PUBLIC_GA_ID`, `NEXT_PUBLIC_META_PIXEL_ID` | optional (storefront only; baked in at build time) | GA4 / Meta Pixel ecommerce events |
+| `APP_VERSION` | set automatically by `deploy.sh` | image tag shown by `/api/health` |
+| `NEXT_OUTPUT` | set by the Dockerfile/CI | `standalone` build output |
+
+Production values live in `deploy/.env`, documented in `deploy/.env.production.example`.
 
 ## Scripts
 

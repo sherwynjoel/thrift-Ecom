@@ -55,7 +55,7 @@ export function VariantMatrix({ state, onChange, inCarts }: { state: ProductForm
             <li key={i} className="flex items-center gap-2">
               <input type="color" value={c.hex} onChange={(e) => setColor(i, { hex: e.target.value })} aria-label={`Color ${i + 1} swatch`} className="size-11 shrink-0 cursor-pointer rounded border border-border bg-transparent lg:size-9" />
               <input value={c.name} onChange={(e) => setColor(i, { name: e.target.value })} placeholder="Color name, e.g. Black" aria-label={`Color ${i + 1} name`} className="h-11 min-w-0 flex-1 rounded-md border border-border bg-bg px-3 text-sm sm:w-56 sm:flex-none lg:h-9" data-testid="color-name" />
-              <button type="button" onClick={() => removeColor(i)} aria-label={`Remove color ${c.name || i + 1}`} className="inline-flex size-11 shrink-0 items-center justify-center text-text-muted hover:text-danger"><Trash2 className="size-4" /></button>
+              <button type="button" onClick={() => removeColor(i)} aria-label={`Remove color ${c.name || i + 1}`} className="inline-flex size-11 shrink-0 items-center justify-center text-text-muted hover:text-danger lg:size-9"><Trash2 className="size-4" /></button>
             </li>
           ))}
         </ul>
