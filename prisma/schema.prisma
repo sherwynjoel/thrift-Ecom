@@ -25,12 +25,12 @@ enum ProductStatus {
 }
 
 model User {
-  id            String        @id @default(cuid())
-  email         String        @unique
+  id            String         @id @default(cuid())
+  email         String         @unique
   passwordHash  String?
   name          String?
   image         String?
-  role          Role          @default(CUSTOMER)
+  role          Role           @default(CUSTOMER)
   emailVerified DateTime?
   accounts      Account[]
   cart          Cart?
@@ -38,8 +38,10 @@ model User {
   orders        Order[]
   designs       Design[]
   designAssets  DesignAsset[]
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  wishlistItems WishlistItem[]
+  reviews       Review[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 }
 
 model Account {
@@ -99,6 +101,8 @@ model Product {
   collections         ProductCollection[]
   orderItems          OrderItem[]
   designs             Design[]
+  wishlistItems       WishlistItem[]
+  reviews             Review[]
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
 
@@ -309,6 +313,8 @@ model Order {
   // Seller and GST inputs frozen when the order became PAID (markOrderPaid), so an issued invoice never
   // changes when store settings change later. Null for orders paid before this existed (render from settings).
   invoiceSnapshot   Json?
+  // Set once a DELIVERED order's review-request email has been sent, so the review-reminder job never emails it twice.
+  reviewRequestedAt DateTime?
   expiresAt         DateTime
   items             OrderItem[]
   events            OrderEvent[]
@@ -320,6 +326,7 @@ model Order {
   @@index([couponCode])
   @@index([paidAt])
   @@index([needsAttention])
+  @@index([status, deliveredAt])
 }
 
 model OrderItem {
@@ -348,6 +355,7 @@ model OrderItem {
   printedAt             DateTime?
   heldAt                DateTime?
   holdNote              String?
+  review                Review?
 
   @@index([orderId])
   @@index([productId])
@@ -419,5 +427,72 @@ model StoreSetting {
   lastDailySummaryOn         String?
   customFrontFeePaise        Int      @default(0)
   customBackFeePaise         Int      @default(14900)
+  announcementText           String?
+  announcementHref           String?
+  autoApproveReviews         Boolean  @default(true)
+  reviewRequestsEnabled      Boolean  @default(true)
   updatedAt                  DateTime @updatedAt
+}
+
+enum BannerPlacement {
+  HERO
+  STRIP
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Banner {
+  id             String          @id @default(cuid())
+  title          String
+  subtitle       String?
+  ctaLabel       String?
+  ctaHref        String?
+  imageKey       String?
+  mobileImageKey String?
+  placement      BannerPlacement @default(HERO)
+  sortOrder      Int             @default(0)
+  active         Boolean         @default(false)
+  startsAt       DateTime?
+  endsAt         DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([placement, active, sortOrder])
+}
+
+model WishlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([productId])
+}
+
+model Review {
+  id          String       @id @default(cuid())
+  productId   String
+  product     Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItemId String       @unique
+  orderItem   OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  rating      Int
+  title       String?
+  body        String       @default("")
+  status      ReviewStatus @default(PENDING)
+  moderatedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([productId, userId])
+  @@index([productId, status, createdAt])
+  @@index([status, createdAt])
 }

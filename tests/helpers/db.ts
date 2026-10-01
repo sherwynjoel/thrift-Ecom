@@ -1,6 +1,9 @@
 import { db } from "@/server/db";
 
 const TABLES = [
+  "Review",
+  "WishlistItem",
+  "Banner",
   "OrderEvent",
   "OrderItem",
   "DesignAsset",
