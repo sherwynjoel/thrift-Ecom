@@ -16,7 +16,7 @@ import { invoiceSnapshotFrom } from "@/lib/invoice-snapshot";
 import { formatPaise } from "@/lib/money";
 import { variantImageUrl } from "@/lib/variant-image";
 import { COUPON_UNAVAILABLE, type PricingLine } from "@/lib/pricing";
-import { customUnitPricePaise, designSides, isCustomItem, type CustomFees } from "@/lib/custom-pricing";
+import { bagLineKey, customUnitPricePaise, designSides, isCustomItem, type CustomFees } from "@/lib/custom-pricing";
 
 export const ORDER_TTL_MS = 30 * 60 * 1000;
 export const MIN_ORDER_PAISE = 100;
@@ -173,13 +173,12 @@ function sameOpenOrder(
   if (o.shipLine1 !== address.line1 || (o.shipLine2 ?? null) !== (address.line2 ?? null)) return false;
   if ((o.shipLandmark ?? null) !== (address.landmark ?? null)) return false;
   if (o.shipCity !== address.city || o.shipState !== address.state || o.shipPincode !== address.pincode) return false;
-  const lineKey = (variantId: string, designId: string | null) => `${variantId}|${designId ?? ""}`;
-  const want = new Map(rows.map((r) => [lineKey(r.variantId, r.designId), { quantity: r.quantity, unit: unitPriceOf(r, fees) }]));
+  const want = new Map(rows.map((r) => [bagLineKey(r.variantId, r.designId), { quantity: r.quantity, unit: unitPriceOf(r, fees) }]));
   if (want.size !== rows.length) return false;
   const have = o.items.filter((i) => i.variantId !== null);
   if (have.length !== want.size) return false;
   return have.every((it) => {
-    const w = want.get(lineKey(it.variantId!, it.designId));
+    const w = want.get(bagLineKey(it.variantId!, it.designId));
     return w !== undefined && w.quantity === it.quantity && w.unit === it.unitPricePaise;
   });
 }
@@ -572,12 +571,12 @@ async function recordSecondPayment(orderId: string, paymentId: string, provider:
 /**
  * Clears exactly what was ordered from the bag: plain lines by variant, custom lines by design. A
  * custom line added after the order was placed (another design on the same tee) stays. An ordered
- * custom item whose design row is gone (designId nulled) is recognised by its print snapshots and is
+ * custom item whose design row is gone (designId nulled) is recognised by its preview snapshots and is
  * never mistaken for a plain line of its variant.
  */
 async function afterPaid(
   orderId: string, userId: string,
-  items: { variantId: string | null; designId: string | null; printFrontUrl: string | null; printBackUrl: string | null }[],
+  items: { variantId: string | null; designId: string | null; designFrontPreviewUrl: string | null; designBackPreviewUrl: string | null }[],
 ): Promise<void> {
   const plainVariantIds = items.filter((i) => i.designId === null && !isCustomItem(i) && i.variantId !== null).map((i) => i.variantId as string);
   const designIds = items.map((i) => i.designId).filter((d): d is string => d !== null);

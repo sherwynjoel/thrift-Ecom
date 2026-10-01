@@ -15,7 +15,7 @@ import { getCustomFees, getSettings } from "@/server/services/settings";
 import { designFileUrl } from "@/server/services/designs";
 import { priceCart, type PriceResult } from "@/lib/pricing";
 import { variantImageUrl } from "@/lib/variant-image";
-import { customFeesOf, customPrintLabel, customUnitPricePaise, designSides, type CustomFees } from "@/lib/custom-pricing";
+import { bagLineKey, customFeesOf, customPrintLabel, customUnitPricePaise, designSides, type CustomFees } from "@/lib/custom-pricing";
 
 export interface CheckoutLineView {
   variantId: string; productName: string; productSlug: string; imageUrl: string | null; size: string; colorName: string;
@@ -74,12 +74,7 @@ export function limitCouponQuotes(userId: string): void {
  * note — a wrong-address risk, not just a lost draft (see N1).
  */
 export function checkoutFormKey(view: Pick<CheckoutView, "lines">): string {
-  return view.lines.map((l) => `${checkoutLineKey(l)}:${l.quantity}:${l.unitPricePaise}`).join(",");
-}
-
-/** Unique per bag line: one plain line per variant, one line per design. */
-function checkoutLineKey(l: Pick<CheckoutLineView, "variantId" | "designId">): string {
-  return `${l.variantId}|${l.designId ?? ""}`;
+  return view.lines.map((l) => `${bagLineKey(l.variantId, l.designId)}:${l.quantity}:${l.unitPricePaise}`).join(",");
 }
 
 export async function quoteForUser(userId: string, couponCode: string | null): Promise<PriceResult> {

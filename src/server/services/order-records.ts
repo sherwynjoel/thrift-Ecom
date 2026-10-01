@@ -26,17 +26,20 @@ export interface OrderView {
   /** Seller/GST inputs frozen when the order was paid; null for orders paid before snapshots existed (see invoiceInputsFor). */
   invoiceSnapshot: InvoiceSnapshot | null;
 }
-/** What a customer may see of an order (their pages, the /api/v1 order routes, emails): never the admin's print-hold note. */
-export type CustomerOrderItemView = Omit<OrderItemView, "heldAt" | "holdNote">;
+/**
+ * What a customer may see of an order (their pages, the /api/v1 order routes, emails): never the admin's print-hold
+ * note, nor the full-resolution print files (admin-only; customers get the previews).
+ */
+const ADMIN_ONLY_ITEM_KEYS = ["heldAt", "holdNote", "printFrontUrl", "printBackUrl"] as const;
+export type CustomerOrderItemView = Omit<OrderItemView, (typeof ADMIN_ONLY_ITEM_KEYS)[number]>;
 export type CustomerOrderView = Omit<OrderView, "items"> & { items: CustomerOrderItemView[] };
 
 export function toCustomerOrderView(o: OrderView): CustomerOrderView {
   return {
     ...o,
     items: o.items.map((i) => {
-      const item: CustomerOrderItemView & Partial<Pick<OrderItemView, "heldAt" | "holdNote">> = { ...i };
-      delete item.heldAt;
-      delete item.holdNote;
+      const item: CustomerOrderItemView & Partial<OrderItemView> = { ...i };
+      for (const k of ADMIN_ONLY_ITEM_KEYS) delete item[k];
       return item;
     }),
   };

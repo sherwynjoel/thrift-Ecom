@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Canvas, FabricImage, FabricObject, Textbox } from "fabric";
 import { toast } from "sonner";
 import { CANVAS_WIDTH, MAX_OBJECTS_PER_SIDE, MAX_TEXT_CHARS, PRINT_AREA, type DesignSide, type StudioFontId } from "@/lib/studio/constants";
-import { EMPTY_SIDE, fontIdsIn, isBlankText, toSideJson, withFontFamilies, withImageCors, withoutBlankText, type SideJson } from "@/lib/studio/canvas-json";
+import { EMPTY_SIDE, fontIdsIn, isPrintedObject, printedOnly, TEXT_TYPES, toSideJson, withFontFamilies, withImageCors, type SideJson } from "@/lib/studio/canvas-json";
 import { canRedo, canUndo, createHistory, pushHistory, redoHistory, undoHistory, type History } from "@/lib/studio/history";
 import { objectDpi } from "@/lib/studio/dpi";
 import { clampScale } from "@/lib/studio/gesture";
@@ -26,7 +26,6 @@ export interface StudioCanvasApi {
 }
 
 const CENTER = { x: PRINT_AREA.left + PRINT_AREA.width / 2, y: PRINT_AREA.top + PRINT_AREA.height / 2 };
-const TEXT_TYPES = new Set(["textbox", "i-text", "itext", "text"]);
 /** Live text edits (typing, sliders) are folded into one undo step once the user pauses. */
 const TEXT_COMMIT_DELAY_MS = 350;
 const ALIGNS = new Set(["left", "center", "right"]);
@@ -35,8 +34,8 @@ const BRAND = "#d4ff3f";
 
 const isText = (o: FabricObject): o is Textbox => o.data?.kind === "text" || TEXT_TYPES.has(String(o.type).toLowerCase());
 const isImage = (o: FabricObject): o is FabricImage => !isText(o) && String(o.type).toLowerCase() === "image";
-/** Empty text layers stay editable but are not printed (no fee, no file). */
-const isPrinted = (o: FabricObject) => !(isText(o) && !(o.text ?? "").trim());
+/** Empty text layers and layers dragged off the print area stay editable but are not printed (no fee, no file). */
+const isPrinted = (o: FabricObject) => isPrintedObject(o as unknown as Record<string, unknown>);
 const FULL_MESSAGE = `Use at most ${MAX_OBJECTS_PER_SIDE} layers per side`;
 /** Keyboard shortcuts only apply while focus is in the studio (never in the cart drawer or other dialogs). */
 export const STUDIO_ROOT_ATTR = "data-studio-root";
@@ -68,7 +67,7 @@ function styleControls(o: FabricObject): void {
 
 function sideJsonLength(json: string): number {
   try {
-    return toSideJson(JSON.parse(json))?.objects.filter((o) => !isBlankText(o)).length ?? 0;
+    return toSideJson(JSON.parse(json))?.objects.filter(isPrintedObject).length ?? 0;
   } catch {
     return 0;
   }
@@ -396,7 +395,7 @@ export function useStudioCanvas({ families, initial, inkHex }: { families: Recor
   const sideJson = useCallback((s: DesignSide): SideJson => {
     flush();
     try {
-      return withoutBlankText(toSideJson(JSON.parse(histories.current[s].present)) ?? EMPTY_SIDE);
+      return printedOnly(toSideJson(JSON.parse(histories.current[s].present)) ?? EMPTY_SIDE);
     } catch {
       return EMPTY_SIDE;
     }

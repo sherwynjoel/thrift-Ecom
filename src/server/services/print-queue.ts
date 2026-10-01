@@ -7,13 +7,12 @@ import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import { uploadKeyFromUrl } from "@/server/uploads";
 import { addOrderEvent, flagAttentionOnce, type Tx } from "@/server/services/order-records";
 import { ORDER_STATUS_LABEL, TO_SHIP_STATUSES } from "@/lib/order-status";
-import type { DesignSide } from "@/lib/studio/constants";
+import { DESIGN_PRINT_PREFIX, type DesignSide } from "@/lib/studio/constants";
 
 /** The print queue works on exactly the orders still waiting to ship (ruling P4). */
 export const PRINT_QUEUE_STATUSES = TO_SHIP_STATUSES;
 export const holdNoteSchema = z.string().trim().min(3, "Say why this item is on hold").max(300, "Keep the note under 300 characters");
 
-const PRINT_KEY_PREFIX = "designs/print/";
 const CUSTOM_ITEM: Prisma.OrderItemWhereInput = { OR: [{ printFrontUrl: { not: null } }, { printBackUrl: { not: null } }] };
 const QUEUE_WHERE: Prisma.OrderItemWhereInput = { ...CUSTOM_ITEM, printedAt: null, order: { status: { in: [...PRINT_QUEUE_STATUSES] } } };
 const inQueue = (s: OrderStatus) => (PRINT_QUEUE_STATUSES as readonly OrderStatus[]).includes(s);
@@ -107,7 +106,7 @@ export async function getPrintFile(itemId: string, side: DesignSide): Promise<{ 
   const item = await db.orderItem.findUnique({ where: { id: itemId }, select: { sku: true, printFrontUrl: true, printBackUrl: true, order: { select: { number: true } } } });
   const url = item ? (side === "front" ? item.printFrontUrl : item.printBackUrl) : null;
   const key = url ? uploadKeyFromUrl(url) : null;
-  const bytes = key?.startsWith(PRINT_KEY_PREFIX) ? await getStorage().get(key) : null;
+  const bytes = key?.startsWith(DESIGN_PRINT_PREFIX) ? await getStorage().get(key) : null;
   if (!item || !bytes) throw new NotFoundError("Print file");
   const safe = (s: string) => s.replace(/[^A-Za-z0-9-]+/g, "-");
   return { bytes, filename: `${safe(item.order.number)}-${safe(item.sku)}-${side}.png` };

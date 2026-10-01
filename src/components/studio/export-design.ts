@@ -1,4 +1,4 @@
-import { CANVAS_HEIGHT, CANVAS_WIDTH, PREVIEW_HEIGHT, PREVIEW_WIDTH, PRINT_AREA, PRINT_SIZES, type DesignSide, type StudioFontId } from "@/lib/studio/constants";
+import { CANVAS_HEIGHT, CANVAS_WIDTH, MAX_PRINT_BYTES, PREVIEW_HEIGHT, PREVIEW_WIDTH, PRINT_AREA, PRINT_SIZES, type DesignSide, type StudioFontId } from "@/lib/studio/constants";
 import { fontIdsIn, withFontFamilies, withImageCors, type SideJson } from "@/lib/studio/canvas-json";
 import { shirtSvgMarkup } from "@/lib/studio/shirt";
 import { loadFontFaces, type FabricModule } from "./fabric-types";
@@ -27,9 +27,37 @@ export async function uploadAsset(file: File): Promise<{ url: string }> {
   return ((await res.json()) as { data: { url: string } }).data;
 }
 
+type PrintSource = Pick<InstanceType<FabricModule["StaticCanvas"]>, "toCanvasElement">;
+
 /**
- * Renders one side off-screen: a transparent print PNG of just the print area (3600 × 4800, or 3072 × 4096 when the
- * device cannot allocate that) and an 800 × 1000 preview of the shirt with the design on it. Null for an empty side.
+ * The transparent print PNG of just the print area: 3600 × 4800, or 3072 × 4096 when the device cannot allocate that
+ * canvas or the full-size file is over the server's per-print cap (a detailed photo).
+ */
+export async function renderPrint(sc: PrintSource): Promise<Blob> {
+  let tooBig = false;
+  for (const size of PRINT_SIZES) {
+    let print: Blob | null = null;
+    try {
+      const el = sc.toCanvasElement(size.width / PRINT_AREA.width, { ...PRINT_AREA });
+      print = await toBlob(el);
+      el.width = 0;
+      el.height = 0; // release the large bitmap immediately (matters on phones)
+    } catch (err) {
+      // A tainted canvas (an image served without CORS) fails at every size: say so instead of blaming the device.
+      if ((err as { name?: string } | null)?.name === "SecurityError") throw new Error("One of your images could not be prepared for print. Remove it and upload it again.");
+      console.warn("[studio] print export failed at", size, err);
+      continue;
+    }
+    if (!print || print.size === 0) continue;
+    if (print.size <= MAX_PRINT_BYTES) return print;
+    tooBig = true;
+  }
+  if (tooBig) throw new Error("This image is too detailed to print at full size. Try a smaller image.");
+  throw new Error("This device could not prepare the print file. Please try a desktop browser.");
+}
+
+/**
+ * Renders one side off-screen: a transparent print PNG of just the print area (see renderPrint) and an 800 × 1000 preview of the shirt with the design on it. Null for an empty side.
  */
 export async function exportSide(fabric: FabricModule, json: SideJson, opts: { families: Record<StudioFontId, string>; colorHex: string; side: DesignSide }): Promise<SideExport | null> {
   if (json.objects.length === 0) return null;
@@ -42,23 +70,8 @@ export async function exportSide(fabric: FabricModule, json: SideJson, opts: { f
     sc.getObjects().forEach((o) => {
       o.objectCaching = false;
     });
-    // No clipPath for the print render: the crop below already equals the print area (and the clip rect has its own capped cache).
-    let print: Blob | null = null;
-    for (const size of PRINT_SIZES) {
-      try {
-        const el = sc.toCanvasElement(size.width / PRINT_AREA.width, { ...PRINT_AREA });
-        print = await toBlob(el);
-        el.width = 0;
-        el.height = 0; // release the large bitmap immediately (matters on phones)
-        if (print && print.size > 0) break;
-      } catch (err) {
-        // A tainted canvas (an image served without CORS) fails at every size: say so instead of blaming the device.
-        if ((err as { name?: string } | null)?.name === "SecurityError") throw new Error("One of your images could not be prepared for print. Remove it and upload it again.");
-        console.warn("[studio] print export failed at", size, err);
-      }
-      print = null;
-    }
-    if (!print) throw new Error("This device could not prepare the print file. Please try a desktop browser.");
+    // No clipPath for the print render: renderPrint's crop already equals the print area (and the clip rect has its own capped cache).
+    const print = await renderPrint(sc);
     sc.clipPath = new fabric.Rect({ ...PRINT_AREA, absolutePositioned: true }); // the preview shows the shirt, so clip the art to the area
     const out = document.createElement("canvas");
     out.width = PREVIEW_WIDTH;

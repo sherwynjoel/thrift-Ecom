@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { exportSide, submitDesign, uploadAsset } from "@/components/studio/export-design";
+import { exportSide, renderPrint, submitDesign, uploadAsset } from "@/components/studio/export-design";
+import { MAX_PRINT_BYTES } from "@/lib/studio/constants";
 import type { FabricModule } from "@/components/studio/fabric-types";
-import { withImageCors, withoutBlankText } from "@/lib/studio/canvas-json";
+import { isPrintedObject, printedOnly, withImageCors } from "@/lib/studio/canvas-json";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -118,10 +119,64 @@ describe("exportSide print render", () => {
   });
 });
 
+/** A print source whose canvas encodes to a blob of the given size per render (null = allocation failure). */
+function sizedPrints(sizes: (number | null)[]) {
+  const multipliers: number[] = [];
+  const sc = {
+    toCanvasElement(multiplier: number) {
+      multipliers.push(multiplier);
+      const size = sizes[multipliers.length - 1];
+      if (size === null) throw new Error("out of memory");
+      return { width: 1, height: 1, toBlob: (cb: (b: Blob) => void) => cb({ size } as Blob) } as unknown as HTMLCanvasElement;
+    },
+  };
+  return { sc, multipliers };
+}
+
+describe("renderPrint size fallback", () => {
+  it("keeps the full-size print when it fits the server cap", async () => {
+    const { sc, multipliers } = sizedPrints([MAX_PRINT_BYTES]);
+    await expect(renderPrint(sc)).resolves.toEqual({ size: MAX_PRINT_BYTES });
+    expect(multipliers).toEqual([15]);
+  });
+
+  it("falls back to 3072 × 4096 when the 3600 × 4800 file is over the cap", async () => {
+    const { sc, multipliers } = sizedPrints([MAX_PRINT_BYTES + 1, 5_000_000]);
+    await expect(renderPrint(sc)).resolves.toEqual({ size: 5_000_000 });
+    expect(multipliers).toEqual([15, 12.8]);
+  });
+
+  it("says the image is too detailed when every size is over the cap", async () => {
+    const { sc } = sizedPrints([MAX_PRINT_BYTES + 1, MAX_PRINT_BYTES + 1]);
+    await expect(renderPrint(sc)).rejects.toThrow("This image is too detailed to print at full size. Try a smaller image.");
+  });
+
+  it("says the image is too detailed when the full size is too big and the fallback cannot be allocated", async () => {
+    const { sc } = sizedPrints([MAX_PRINT_BYTES + 1, null]);
+    await expect(renderPrint(sc)).rejects.toThrow("too detailed");
+  });
+});
+
 describe("side JSON helpers", () => {
   it("drops blank text layers only", () => {
     const json = { objects: [{ type: "Textbox", text: "  " }, { type: "Textbox", text: "HI" }, image] };
-    expect(withoutBlankText(json).objects).toEqual([{ type: "Textbox", text: "HI" }, image]);
+    expect(printedOnly(json).objects).toEqual([{ type: "Textbox", text: "HI" }, image]);
+  });
+
+  it("does not print a layer lying entirely outside the print area (280..520 × 320..640)", () => {
+    const box = (over: Record<string, unknown>) => ({ type: "Image", width: 100, height: 100, scaleX: 1, scaleY: 1, angle: 0, originX: "left", originY: "top", ...over });
+    expect(isPrintedObject(box({ left: 300, top: 400 }))).toBe(true);
+    expect(isPrintedObject(box({ left: 200, top: 400 }))).toBe(true); // overlaps the left edge
+    expect(isPrintedObject(box({ left: 600, top: 400 }))).toBe(false); // right of the area
+    expect(isPrintedObject(box({ left: 300, top: 700 }))).toBe(false); // below it
+    expect(isPrintedObject(box({ left: 180, top: 400 }))).toBe(false); // ends exactly at the edge
+    expect(isPrintedObject(box({ left: 180, top: 400, scaleX: 1.5 }))).toBe(true); // scaled into it
+    expect(isPrintedObject(box({ left: 250, top: 400, originX: "center" }))).toBe(true); // spans 200..300
+    expect(isPrintedObject(box({ left: 580, top: 400, originX: "center" }))).toBe(false); // spans 530..630
+    expect(isPrintedObject(box({ left: 530, top: 400 }))).toBe(false);
+    expect(isPrintedObject(box({ left: 530, top: 400, angle: 90 }))).toBe(true); // rotated about its corner back to 430..530
+    expect(isPrintedObject({ type: "Textbox", text: "  ", left: 300, top: 400, width: 100, height: 40 })).toBe(false);
+    expect(printedOnly({ objects: [box({ left: 600, top: 0 })] }).objects).toEqual([]);
   });
 
   it("adds crossOrigin to images only", () => {

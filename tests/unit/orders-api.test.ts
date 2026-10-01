@@ -39,4 +39,19 @@ describe("/api/v1/orders", () => {
     const list = await listOrders(new NextRequest(`${BASE}/api/v1/orders`, { headers }), { params: Promise.resolve({}) });
     expect(await list.text()).not.toMatch(/holdNote|heldAt|SECRET-HOLD-NOTE/);
   });
+
+  it("never shows the customer the print-file URLs, only the previews", async () => {
+    const u = await createUser();
+    const o = await createOrderRow(u.id, { number: "ORD-1001" });
+    await createOrderItemRow(o.id, {
+      designFrontPreviewUrl: "/api/uploads/designs/previews/f.png", printFrontUrl: "/api/uploads/designs/print/SECRET-PRINT.png", printBackUrl: "/api/uploads/designs/print/SECRET-BACK.png",
+    });
+    const headers = { authorization: `Bearer ${await signApiToken({ id: u.id, role: "CUSTOMER" })}` };
+    const one = await getOrder(new NextRequest(`${BASE}/api/v1/orders/ORD-1001`, { headers }), { params: Promise.resolve({ number: "ORD-1001" }) });
+    const text = await one.text();
+    expect(text).toContain("designs/previews/f.png");
+    expect(text).not.toMatch(/printFrontUrl|printBackUrl|designs\/print|SECRET-/);
+    const list = await listOrders(new NextRequest(`${BASE}/api/v1/orders`, { headers }), { params: Promise.resolve({}) });
+    expect(await list.text()).not.toMatch(/designs\/print|SECRET-/);
+  });
 });

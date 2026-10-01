@@ -1,11 +1,11 @@
-import { CANVAS_HEIGHT, CANVAS_WIDTH, isStudioFontId, MAX_OBJECTS_PER_SIDE, MAX_SIDE_JSON_CHARS, MAX_TEXT_CHARS, type StudioFontId } from "./constants";
+import { CANVAS_HEIGHT, CANVAS_WIDTH, isStudioFontId, MAX_OBJECTS_PER_SIDE, MAX_SIDE_JSON_CHARS, MAX_TEXT_CHARS, PRINT_AREA, type StudioFontId } from "./constants";
 
 /** The only shape the studio stores per side: Fabric's `toObject(["data"])` minus canvas-level keys. */
 export interface SideJson { version?: string; objects: Record<string, unknown>[] }
 
 export const EMPTY_SIDE: SideJson = { objects: [] };
 
-const TEXT_TYPES = new Set(["textbox", "i-text", "itext", "text"]);
+export const TEXT_TYPES: ReadonlySet<string> = new Set(["textbox", "i-text", "itext", "text"]);
 const IMAGE_TYPES = new Set(["image"]);
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -146,8 +146,39 @@ export function isBlankText(o: Record<string, unknown>): boolean {
   return TEXT_TYPES.has(typeOf(o)) && String(o.text ?? "").trim() === "";
 }
 
-export function withoutBlankText(json: SideJson): SideJson {
-  return { ...json, objects: json.objects.filter((o) => !isBlankText(o)) };
+const ORIGIN_FRACTION: Record<string, number> = { left: 0, top: 0, center: 0.5, right: 1, bottom: 1 };
+const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
+
+/**
+ * Canvas-aligned bounding box of a layer (serialised JSON or a live Fabric object: both carry these keys).
+ * Fabric places the origin point at (left, top) and rotates around it. Null when the size is unknown.
+ */
+export function objectBounds(o: Record<string, unknown>): { left: number; top: number; right: number; bottom: number } | null {
+  if (typeof o.width !== "number" || typeof o.height !== "number") return null;
+  const w = o.width * Math.abs(num(o.scaleX, 1));
+  const h = o.height * Math.abs(num(o.scaleY, 1));
+  const ox = (ORIGIN_FRACTION[String(o.originX)] ?? 0) * w;
+  const oy = (ORIGIN_FRACTION[String(o.originY)] ?? 0) * h;
+  const rad = (num(o.angle, 0) * Math.PI) / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  const xs: number[] = [], ys: number[] = [];
+  for (const [dx, dy] of [[-ox, -oy], [w - ox, -oy], [w - ox, h - oy], [-ox, h - oy]]) {
+    xs.push(num(o.left, 0) + dx * cos - dy * sin);
+    ys.push(num(o.top, 0) + dx * sin + dy * cos);
+  }
+  return { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) };
+}
+
+/** A layer is printed unless it is blank text or lies entirely outside the print area (no fee, no file). */
+export function isPrintedObject(o: Record<string, unknown>): boolean {
+  if (isBlankText(o)) return false;
+  const b = objectBounds(o);
+  return b === null || (b.right > PRINT_AREA.left && b.left < PRINT_AREA.left + PRINT_AREA.width && b.bottom > PRINT_AREA.top && b.top < PRINT_AREA.top + PRINT_AREA.height);
+}
+
+/** Only the layers that end up on the shirt. */
+export function printedOnly(json: SideJson): SideJson {
+  return { ...json, objects: json.objects.filter(isPrintedObject) };
 }
 
 /** Images are always loaded with CORS so an S3-hosted asset never taints the editor or export canvas. The server never stores this key. */

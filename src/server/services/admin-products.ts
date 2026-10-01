@@ -166,14 +166,35 @@ export async function updateProduct(id: string, input: unknown): Promise<{ id: s
   }
 }
 
+/**
+ * Deleting a product cascades to the designs made on it; their preview/print files go too, except files an order
+ * snapshot still links to (orders keep their design URLs). File cleanup is best-effort after the delete.
+ */
 export async function deleteProduct(id: string): Promise<void> {
-  const p = await db.product.findUnique({ where: { id }, select: { status: true, images: { select: { url: true } } } });
+  const p = await db.product.findUnique({
+    where: { id },
+    select: { status: true, images: { select: { url: true } }, designs: { select: { frontPreviewKey: true, backPreviewKey: true, frontPrintKey: true, backPrintKey: true } } },
+  });
   if (!p) throw new NotFoundError("Product");
   if (p.status === "ACTIVE") throw new ConflictError("Archive the product before deleting it");
   await db.product.delete({ where: { id } });
-  for (const { url } of p.images) {
-    const key = uploadKeyFromUrl(url);
-    if (key) await getStorage().delete(key).catch((err) => console.error("[admin-products] image cleanup failed", err));
+  const storage = getStorage();
+  const designKeys = p.designs.flatMap((d) => [d.frontPreviewKey, d.backPreviewKey, d.frontPrintKey, d.backPrintKey]).filter((k): k is string => k !== null);
+  const urls = designKeys.map((k) => storage.getPublicUrl(k));
+  const ordered = new Set<string>();
+  if (urls.length) {
+    const rows = await db.orderItem.findMany({
+      where: { OR: [{ designFrontPreviewUrl: { in: urls } }, { designBackPreviewUrl: { in: urls } }, { printFrontUrl: { in: urls } }, { printBackUrl: { in: urls } }] },
+      select: { designFrontPreviewUrl: true, designBackPreviewUrl: true, printFrontUrl: true, printBackUrl: true },
+    });
+    for (const r of rows) for (const u of [r.designFrontPreviewUrl, r.designBackPreviewUrl, r.printFrontUrl, r.printBackUrl]) if (u) ordered.add(u);
+  }
+  const keys = [
+    ...p.images.map(({ url }) => uploadKeyFromUrl(url)),
+    ...designKeys.filter((k) => !ordered.has(storage.getPublicUrl(k))),
+  ];
+  for (const key of keys) {
+    if (key) await storage.delete(key).catch((err) => console.error("[admin-products] file cleanup failed", key, err));
   }
 }
 

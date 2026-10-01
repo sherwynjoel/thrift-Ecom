@@ -49,6 +49,36 @@ describe("purge-designs job", () => {
     expect(await runPurgeDesigns()).toEqual({ purged: 0, filesDeleted: 0 });
   });
 
+  it("purges old designs held only by guest bags idle for 30 days, with their bag lines", async () => {
+    const p = await createProduct({ isCustomizable: true });
+    const old = new Date(Date.now() - 31 * DAY);
+    const variantId = p.variants[0].id;
+    await storage.put("designs/print/guest.png", fakePng(1, 1), "image/png");
+    const bagged = async (cart: { userId?: string; guestToken?: string; updatedAt: Date }, itemUpdatedAt: Date, plainUpdatedAt?: Date) => {
+      const d = await createDesignRow({ productId: p.id, cartToken: cart.guestToken ?? null, userId: cart.userId ?? null, createdAt: old, frontPrintKey: cart.guestToken === "idle" ? "designs/print/guest.png" : null });
+      const c = await db.cart.create({ data: cart });
+      await db.cartItem.create({ data: { cartId: c.id, variantId, quantity: 1, designId: d.id, createdAt: old, updatedAt: itemUpdatedAt } });
+      if (plainUpdatedAt) await db.cartItem.create({ data: { cartId: c.id, variantId, quantity: 1, createdAt: old, updatedAt: plainUpdatedAt } });
+      return d;
+    };
+    const idle = await bagged({ guestToken: "idle", updatedAt: old }, old, old);
+    const recentLine = await bagged({ guestToken: "busy-line", updatedAt: old }, old, new Date());
+    const recentBag = await bagged({ guestToken: "busy-bag", updatedAt: new Date() }, old);
+    const u = await createUser();
+    const userBag = await bagged({ userId: u.id, updatedAt: old }, old);
+    // Both idle guest bags hold the same design: it goes only once neither is in use.
+    const sharedIdle = await bagged({ guestToken: "idle-2", updatedAt: old }, old);
+    const busy = await db.cart.create({ data: { guestToken: "busy-2" } });
+    await db.cartItem.create({ data: { cartId: busy.id, variantId, quantity: 1, designId: sharedIdle.id } });
+
+    expect((await runPurgeDesigns()).purged).toBe(1);
+    expect(await db.design.findUnique({ where: { id: idle.id } })).toBeNull();
+    expect(existsSync(join(root, "designs", "print", "guest.png"))).toBe(false);
+    expect(await db.cartItem.count({ where: { cart: { guestToken: "idle" } } })).toBe(1); // only the plain line is left
+    const left = (await db.design.findMany({ select: { id: true } })).map((d) => d.id).sort();
+    expect(left).toEqual([recentLine.id, recentBag.id, userBag.id, sharedIdle.id].sort());
+  });
+
   it("keeps the files a purged design shared with a design saved meanwhile", async () => {
     const p = await createProduct({ isCustomizable: true });
     const old = new Date(Date.now() - 31 * DAY);

@@ -10,7 +10,7 @@ vi.mock("@/server/adapters/storage", async (orig) => ({ ...(await orig<typeof im
 
 import { db } from "@/server/db";
 import { resetDb } from "../helpers/db";
-import { createCollection, createProduct, linkProductToCollection } from "../helpers/fixtures";
+import { createCollection, createDesignRow, createOrderItemRow, createOrderRow, createProduct, createUser, linkProductToCollection } from "../helpers/fixtures";
 import {
   createProduct as adminCreate,
   deleteProduct,
@@ -124,6 +124,19 @@ describe("admin products service", () => {
     await updateProduct(id, input({ status: "ARCHIVED" }));
     await deleteProduct(id);
     await expect(getAdminProduct(id)).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("deletes the files of the product's designs, except those an order links to", async () => {
+    const p = await createProduct({ status: "ARCHIVED", isCustomizable: true });
+    const keys = ["designs/previews/cart.png", "designs/print/cart.png", "designs/previews/ordered.png", "designs/print/ordered.png"];
+    for (const k of keys) await storage.put(k, new Uint8Array([1]), "image/png");
+    await createDesignRow({ productId: p.id, cartToken: "g", frontPreviewKey: keys[0], frontPrintKey: keys[1] });
+    const ordered = await createDesignRow({ productId: p.id, cartToken: "g", frontPreviewKey: keys[2], frontPrintKey: keys[3] });
+    const u = await createUser();
+    await createOrderItemRow((await createOrderRow(u.id)).id, { designId: ordered.id, designFrontPreviewUrl: storage.getPublicUrl(keys[2]), printFrontUrl: storage.getPublicUrl(keys[3]) });
+    await deleteProduct(p.id);
+    expect(await db.design.count()).toBe(0);
+    expect(keys.map((k) => existsSync(join(root, k)))).toEqual([false, false, true, true]);
   });
 
   it("swaps two existing variants' size and color in one save", async () => {
