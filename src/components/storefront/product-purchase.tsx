@@ -71,8 +71,15 @@ export function ProductPurchase({ product, rating }: { product: ProductDetail; r
           <div className="mt-3"><Price pricePaise={pricePaise} compareAtPricePaise={product.compareAtPricePaise} size="lg" /></div>
           <p className="text-xs text-text-muted">Inclusive of all taxes</p>
           {rating && (
-            <a href="#reviews" className="inline-flex min-h-11 items-center gap-2 text-sm text-text-muted hover:text-text" data-testid="rating-link">
-              <RatingStars rating={rating.average} /> {formatRating(rating.average)} ({rating.count})
+            <a
+              href="#reviews"
+              aria-label={`Rated ${formatRating(rating.average)} out of 5, ${rating.count} review${rating.count === 1 ? "" : "s"}`}
+              className="inline-flex min-h-11 items-center gap-2 text-sm text-text-muted hover:text-text"
+              data-testid="rating-link"
+            >
+              <span aria-hidden="true" className="inline-flex items-center gap-2">
+                <RatingStars rating={rating.average} /> {formatRating(rating.average)} ({rating.count})
+              </span>
             </a>
           )}
         </div>

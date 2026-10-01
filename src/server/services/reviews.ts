@@ -38,8 +38,10 @@ export async function getRatingSummary(productId: string): Promise<RatingSummary
   return { average: count ? roundRating(total / count) : 0, count, histogram };
 }
 
+const MAX_PAGE = 1000;
+
 export async function listApprovedReviews(productId: string, page = 1): Promise<Page<ReviewView>> {
-  const p = Math.max(1, Math.floor(page) || 1);
+  const p = Math.min(MAX_PAGE, Math.max(1, Math.floor(page) || 1));
   const where = { productId, status: "APPROVED" as const };
   const [total, rows] = await Promise.all([
     db.review.count({ where }),
@@ -57,9 +59,11 @@ export async function getProductReviewsBySlug(slug: string, page = 1): Promise<{
   return { summary, reviews };
 }
 
+/** Eligible item for a review: delivered, not yet reviewed, and the product is still active (the server action's
+ * productId comes straight from the client, so this is the only gate — the slug-based API path filters ACTIVE too). */
 function eligibleItem(userId: string, productId: string) {
   return db.orderItem.findFirst({
-    where: { productId, review: { is: null }, order: { userId, status: "DELIVERED" } },
+    where: { productId, review: { is: null }, order: { userId, status: "DELIVERED" }, product: { status: "ACTIVE" } },
     orderBy: { order: { deliveredAt: "asc" } },
     select: { id: true },
   });

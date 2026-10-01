@@ -32,6 +32,14 @@ describe("reviews service", () => {
     expect(await getReviewEligibility(u.id, p.id)).toEqual({ canReview: false, blocker: "already-reviewed" });
   });
 
+  it("blocks reviews once the product is no longer active, even via the server-action path (raw productId)", async () => {
+    const p = await createProduct();
+    const u = await buyer(p.id);
+    await db.product.update({ where: { id: p.id }, data: { status: "ARCHIVED" } });
+    expect(await getReviewEligibility(u.id, p.id)).toEqual({ canReview: false, blocker: "not-delivered" });
+    await expect(createReview(u.id, p.id, { rating: 5 })).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
   it("auto-approves 4–5 stars, holds the rest, and honours the setting", async () => {
     const p = await createProduct();
     expect((await createReview((await buyer(p.id)).id, p.id, { rating: 5, title: " Love it ", body: "Soft and heavy." })).status).toBe("APPROVED");
@@ -67,6 +75,12 @@ describe("reviews service", () => {
     expect(page1.items[0].authorName).toBe("Asha R.");
     expect((await listApprovedReviews(p.id, 2)).items).toHaveLength(1);
     expect((await getProductReviewsBySlug("summary-tee")).summary.count).toBe(11);
+  });
+
+  it("clamps absurd page numbers instead of overflowing the database offset", async () => {
+    const p = await createProduct();
+    await expect(listApprovedReviews(p.id, 1e300)).resolves.toMatchObject({ items: [], page: 1000 });
+    await expect(listApprovedReviews(p.id, -5)).resolves.toMatchObject({ page: 1 });
   });
 
   it("lets admins moderate", async () => {

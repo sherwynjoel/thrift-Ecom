@@ -10,7 +10,7 @@ export function ReviewList({ reviews }: { reviews: ReviewView[] }) {
         <li key={r.id}>
           <article data-testid="review" className="space-y-2 py-5">
             <RatingStars rating={r.rating} />
-            {r.title && <h4 className="font-medium">{r.title}</h4>}
+            {r.title && <h3 className="font-medium">{r.title}</h3>}
             {r.body && <p className="whitespace-pre-line text-sm leading-relaxed">{r.body}</p>}
             <p className="text-xs text-text-muted">{r.authorName} · Verified buyer · {formatDateIst(r.createdAt)}</p>
           </article>
