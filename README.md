@@ -42,6 +42,7 @@ Automations run through `POST /api/cron/<job>` with `Authorization: Bearer $CRON
 | `daily-summary` | 21:00 IST | today's orders, revenue, to-ship, needs-attention, low stock |
 | `abandoned-cart` | hourly | one reminder to signed-in shoppers whose bag has been idle 3–48 h |
 | `reconcile-payments` | every 30 min | asks Razorpay about unpaid orders from the last 48 h and marks captured payments paid (lost-webhook safety net) |
+| `purge-designs` | daily, 03:30 IST | deletes designs older than 30 days that are in no bag and no order (with their files), and uploaded studio images older than 24 h that no design uses |
 
 Run one by hand:
 
@@ -49,7 +50,7 @@ Run one by hand:
 curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/expire-orders
 ```
 
-On the EC2 box (`crontab -e`, server clock in UTC; 21:00 IST = 15:30 UTC):
+On the EC2 box (`crontab -e`, server clock in UTC; 21:00 IST = 15:30 UTC, 03:30 IST = 22:00 UTC the day before):
 
 ```cron
 */5 * * * *  curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/expire-orders >/dev/null
@@ -57,6 +58,7 @@ On the EC2 box (`crontab -e`, server clock in UTC; 21:00 IST = 15:30 UTC):
 30 15 * * *  curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/daily-summary >/dev/null
 15 * * * *   curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/abandoned-cart >/dev/null
 */30 * * * * curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/reconcile-payments >/dev/null
+0 22 * * *   curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://DOMAIN/api/cron/purge-designs >/dev/null
 ```
 
 (Define `CRON_SECRET=…` at the top of the crontab and replace `DOMAIN` with your domain.) Every job is safe to run twice. Emails go to **Admin → Settings → Admin email**.
@@ -75,6 +77,19 @@ On the EC2 box (`crontab -e`, server clock in UTC; 21:00 IST = 15:30 UTC):
 6. **Invoices** freeze the seller name, address, state, GSTIN and GST rates at the moment the order is paid, so later changes in **Settings** never alter an invoice that was already issued. Orders paid before this existed use the current settings. A refunded order's invoice is marked **REFUNDED** with the refund date.
 
 **GST slab (confirm with your CA before launch):** the 5% / 18% slab is chosen from each item's list price before any discount. Under GST the slab may instead follow the discounted per-piece value shown on the invoice (for example a ₹2,700 tee sold at ₹2,430 after 10% off would fall in the lower slab). If your CA confirms that, the change is one line in `src/lib/gst.ts` (`buildInvoice`: rate from `(lineTotal − allocated discount) / quantity`).
+
+## Design studio and print queue
+
+- Customers design at `/customize` (any **active** product with **Customizable blank** ticked in the product editor; the seed marks the two blank tees). Front and back each have a 12 × 16 in print area. Uploads: PNG, JPG or WebP up to 10 MB. Text: Anton, Bebas Neue, Inter, Permanent Marker. Images below 150 DPI at their printed size show a warning (below 100 DPI: "may print blurry"); nothing is blocked.
+- Price = tee price + **Front print fee** (if the front has a design) + **Back print fee** (if the back has one). Set both in **Admin → Settings → Custom prints** (defaults ₹0 and ₹149). Offers ignore custom tees unless the offer has **Include custom-printed tees** ticked; coupons always apply.
+- On "Add to cart" the browser renders, per designed side, an 800 px preview (tee + design) and a transparent 3600 × 4800 px print PNG (300 DPI; phones that cannot allocate that canvas send 3072 × 4096, 256 DPI). Files live in storage under `designs/previews/`, `designs/print/` and `designs/assets/`. Print files are never served by the public `/api/uploads` route, only through the admin download in the print queue.
+- **Print queue** (`/admin/print-queue`, badge in the nav): every custom item of a Paid or Processing order that is not printed yet, oldest first, optionally grouped by colour + size. Download the print files, print, then **Mark printed**; when every custom item of a Paid order is printed the order moves to **Processing** automatically. **Hold** (with a note) flags the order for attention and gives you a WhatsApp link to the customer; release the hold to continue.
+- Order pages, the packing slip ("Custom print: front + back"), the invoice and the confirmation email show the design previews.
+- **S3:** when `STORAGE_DRIVER=s3`, add a CORS rule on the bucket allowing `GET` from the site origin, otherwise the browser cannot export designs that contain uploaded images. Keep `designs/print/` out of any public bucket policy so print files stay admin-only.
+- Cleanup: the `purge-designs` cron job (daily, e.g. 03:30 IST) deletes designs older than 30 days that are in no bag and no order, with their files:
+  `curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://<site>/api/cron/purge-designs`
+- The only new dependency is `fabric` (v6), loaded in the browser on the studio page only.
+- **Before launch, try the studio on a real iPhone (Safari) and a real Android phone (Chrome):** one-finger drag on a design, two-finger pinch/rotate, and that swiping on the empty area around the shirt still scrolls the page. The e2e tests run in desktop Chromium with touch emulation and cannot prove real touch gestures.
 
 ## Environment variables
 
