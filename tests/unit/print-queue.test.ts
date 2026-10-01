@@ -82,6 +82,8 @@ describe("print queue service", () => {
     expect(flagged.needsAttention).toBe(true);
     expect(flagged.events.find((e) => e.type === "ATTENTION")?.message).toContain("Artwork may be copyrighted");
     expect((await listPrintQueue())[0]).toMatchObject({ itemId: a.id, holdNote: "Artwork may be copyrighted" });
+    await expect(holdItem(a.id, "Second hold", null)).rejects.toBeInstanceOf(ConflictError);
+    expect(await db.orderItem.findUniqueOrThrow({ where: { id: a.id } })).toMatchObject({ holdNote: "Artwork may be copyrighted" });
     await expect(markItemPrinted(a.id, null)).rejects.toBeInstanceOf(ConflictError);
     await releaseHold(a.id, null);
     await expect(releaseHold(a.id, null)).rejects.toBeInstanceOf(ConflictError);

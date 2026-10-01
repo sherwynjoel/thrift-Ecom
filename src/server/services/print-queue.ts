@@ -86,6 +86,7 @@ export async function holdItem(itemId: string, note: unknown, actorId: string | 
   if (!parsed.success) throw new ValidationError({ note: zodFieldErrors(parsed.error).form ?? ["Say why this item is on hold"] });
   await withQueuedItem(itemId, async (tx, item) => {
     if (item.printedAt) throw new ConflictError("This item is already printed");
+    if (item.heldAt) throw new ConflictError("This item is already on hold");
     await tx.orderItem.update({ where: { id: itemId }, data: { heldAt: new Date(), holdNote: parsed.data } });
     const message = `Custom print on hold, ${itemLabel(item)}: ${parsed.data}`;
     // Already flagged for something else: keep that flag and record the hold as a note.
