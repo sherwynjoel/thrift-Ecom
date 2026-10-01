@@ -129,7 +129,9 @@ export async function smallTapTargets(page: Page, min = 44): Promise<string[]> {
       if (el.tagName === "A" && style.display === "inline" && el.closest("p")) continue;
       if (ok(r)) continue;
       // Stretched links (after:absolute after:inset-0): the tap area is the positioned ancestor, e.g. a whole list row.
-      if (getComputedStyle(el, "::after").position === "absolute") {
+      // Only a real stretch counts: the ::after must be absolutely positioned AND pinned to all four edges (inset 0).
+      const after = getComputedStyle(el, "::after");
+      if (after.position === "absolute" && [after.top, after.right, after.bottom, after.left].every((v) => v === "0px")) {
         let box = el.parentElement;
         while (box && getComputedStyle(box).position === "static") box = box.parentElement;
         if (box && ok(box.getBoundingClientRect())) continue;

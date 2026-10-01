@@ -108,7 +108,8 @@ test.describe("admin-driven growth features", () => {
       await form.getByLabel("Title").fill(text);
       await form.getByLabel("Show on the site").check();
       await form.getByRole("button", { name: "Save banner" }).click();
-      await expect(admin).toHaveURL(/\/admin\/banners\/[^/]+$/);
+      // The form itself lives at /admin/banners/new, so wait for the saved banner's own URL.
+      await expect(admin).toHaveURL(/\/admin\/banners\/(?!new$)[^/]+$/);
       await page.goto("/");
       await expect(page.getByTestId("ticker")).toContainText(text);
       await confirmDelete(admin, /delete banner/i);
