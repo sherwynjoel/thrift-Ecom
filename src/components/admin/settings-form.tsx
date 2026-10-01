@@ -22,7 +22,7 @@ const LEGEND = "px-1 font-display text-2xl uppercase";
 type Text = {
   shippingFee: string; freeShippingThreshold: string; lowStockThreshold: string; adminNotifyEmail: string; whatsappNumber: string;
   sellerName: string; sellerAddress: string; sellerState: string; gstin: string; gstRateLowPct: string; gstRateHighPct: string; gstThreshold: string;
-  customFrontFee: string; customBackFee: string;
+  customFrontFee: string; customBackFee: string; announcementText: string; announcementHref: string;
 };
 
 function fromSettings(s: StoreSettings): Text {
@@ -32,6 +32,7 @@ function fromSettings(s: StoreSettings): Text {
     sellerName: s.sellerName, sellerAddress: s.sellerAddress, sellerState: s.sellerState, gstin: s.gstin ?? "",
     gstRateLowPct: String(s.gstRateLowPct), gstRateHighPct: String(s.gstRateHighPct), gstThreshold: paiseToRupees(s.gstThresholdPaise),
     customFrontFee: paiseToRupees(s.customFrontFeePaise), customBackFee: paiseToRupees(s.customBackFeePaise),
+    announcementText: s.announcementText ?? "", announcementHref: s.announcementHref ?? "",
   };
 }
 
@@ -72,6 +73,8 @@ export function SettingsForm({ settings }: { settings: StoreSettings }) {
       whatsappNumber: t.whatsappNumber,
       customFrontFeePaise: rupees(t.customFrontFee, "customFrontFeePaise"),
       customBackFeePaise: rupees(t.customBackFee, "customBackFeePaise"),
+      announcementText: t.announcementText,
+      announcementHref: t.announcementHref,
       dailySummaryEnabled,
       abandonedCartEnabled,
     };
@@ -145,6 +148,24 @@ export function SettingsForm({ settings }: { settings: StoreSettings }) {
           <Input id="s-low" value={t.lowStockThreshold} onChange={set("lowStockThreshold")} inputMode="numeric" className={FIELD} aria-describedby="s-low-hint" />
           <p id="s-low-hint" className="mt-1 text-xs text-text-muted">A variant with this many or fewer counts as low.</p>
           <FieldError errors={errors.lowStockThreshold} />
+        </div>
+      </fieldset>
+
+      <fieldset className={FIELDSET}>
+        <legend className={LEGEND}>Storefront</legend>
+        <div>
+          <div className="flex items-baseline justify-between gap-2">
+            <Label htmlFor="s-announcement">Announcement text</Label>
+            <span className="text-xs text-text-muted" aria-hidden="true">{t.announcementText.length}/140</span>
+          </div>
+          <Input id="s-announcement" value={t.announcementText} onChange={set("announcementText")} maxLength={140} className={FIELD} aria-describedby="s-announcement-hint" />
+          <p id="s-announcement-hint" className="mt-1 text-xs text-text-muted">Shown in a bar above the header on every page. Leave empty to hide it.</p>
+          <FieldError errors={errors.announcementText} />
+        </div>
+        <div>
+          <Label htmlFor="s-announcement-href">Announcement link (optional)</Label>
+          <Input id="s-announcement-href" value={t.announcementHref} onChange={set("announcementHref")} inputMode="url" placeholder="/collections/new-drops" autoCapitalize="none" spellCheck={false} className={FIELD} />
+          <FieldError errors={errors.announcementHref} />
         </div>
       </fieldset>
 
