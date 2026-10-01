@@ -2,7 +2,7 @@
 # Build and (re)start the production stack. Run from anywhere inside the repo on the server.
 #   bash deploy/deploy.sh                  git pull, build thrift-app:<commit>, start, wait for health, roll back if unhealthy
 #   bash deploy/deploy.sh --no-pull        deploy the commit that is checked out
-#   bash deploy/deploy.sh --restart        re-read deploy/.env and recreate app + cron without rebuilding
+#   bash deploy/deploy.sh --restart        re-read deploy/.env and recreate app, cron and backup without rebuilding
 #   bash deploy/deploy.sh --rollback TAG   run a previously built image (list: docker images thrift-app)
 set -Eeuo pipefail
 
@@ -87,8 +87,8 @@ preflight
 if [ "$mode" = restart ]; then
   APP_VERSION="$(cat deploy/.current-version 2>/dev/null || echo dev)"
   export APP_VERSION
-  log "recreating app and cron with thrift-app:$APP_VERSION"
-  "${COMPOSE[@]}" up -d --no-build --force-recreate "${WAIT[@]}" app cron || die "the app did not become healthy: ${COMPOSE[*]} logs app"
+  log "recreating app, cron and backup with thrift-app:$APP_VERSION"
+  "${COMPOSE[@]}" up -d --no-build --force-recreate "${WAIT[@]}" app cron backup || die "the app did not become healthy: ${COMPOSE[*]} logs app"
   public_check
   exit 0
 fi
@@ -116,7 +116,7 @@ export APP_VERSION
 previous="$(cat deploy/.current-version 2>/dev/null || true)"
 
 log "building thrift-app:$APP_VERSION (the first build takes several minutes)"
-"${COMPOSE[@]}" build app
+"${COMPOSE[@]}" build app cron
 
 log "starting the stack and waiting for it to become healthy"
 if ! "${COMPOSE[@]}" up -d --remove-orphans "${WAIT[@]}"; then

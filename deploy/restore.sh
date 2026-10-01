@@ -22,6 +22,10 @@ case "$cmd" in
     ;;
   db)
     [[ "$file" =~ ^db-[0-9]{8}T[0-9]{6}Z\.sql\.gz$ ]] || die "usage: restore.sh db db-YYYYMMDDTHHMMSSZ.sql.gz (see: restore.sh list)"
+    # The app is restarted below with the image deploy.sh last started; without it compose would look for thrift-app:dev.
+    APP_VERSION="$(cat deploy/.current-version 2>/dev/null || true)"
+    [ -n "$APP_VERSION" ] || die "deploy/.current-version is missing: run bash deploy/deploy.sh once before restoring"
+    export APP_VERSION
     "${COMPOSE[@]}" exec -T backup test -f "/backups/$file" || die "/backups/$file does not exist"
     confirm "This REPLACES the live database with $file."
     "${COMPOSE[@]}" exec -T backup sh /opt/backup/backup.sh once

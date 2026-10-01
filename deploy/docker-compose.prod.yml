@@ -100,7 +100,8 @@ services:
     logging: *logging
 
   cron:
-    image: alpine:3.20
+    build: ./cron
+    image: thrift-cron:local
     restart: unless-stopped
     command: ["/bin/sh", "/opt/cron/start.sh"]
     environment:

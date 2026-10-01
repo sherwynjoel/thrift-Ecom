@@ -57,6 +57,8 @@ At your domain's DNS host create two records (TTL 300):
 | A | `@` (the bare domain) | your Elastic IP |
 | A | `www` | your Elastic IP |
 
+**Delete every other record for `@` and `www`**: any other A record, every **AAAA** record, and any `www` CNAME or registrar "parking"/"forwarding" record. Let's Encrypt prefers IPv6, so a leftover AAAA record sends its check to the parking server and Caddy never gets a certificate. (MX and TXT records for email stay.)
+
 Check from your computer until it prints the Elastic IP:
 
 ```bash
@@ -72,7 +74,13 @@ chmod 400 ~/Downloads/store.pem
 ssh -i ~/Downloads/store.pem ubuntu@<Elastic IP>
 ```
 
-On Windows run the same `ssh` command in PowerShell or Git Bash (skip `chmod`).
+**On Windows** (PowerShell), restrict the key to your own user first, or OpenSSH refuses it with "UNPROTECTED PRIVATE KEY FILE":
+
+```powershell
+icacls "$HOME\Downloads\store.pem" /inheritance:r
+icacls "$HOME\Downloads\store.pem" /grant:r "$($env:USERNAME):(R)"
+ssh -i "$HOME\Downloads\store.pem" ubuntu@<Elastic IP>
+```
 
 ## 6. Bootstrap the server
 
@@ -181,16 +189,67 @@ Then `bash deploy/deploy.sh --restart` and test: register a customer (welcome em
 
 ## 12. Optional: images on S3
 
-1. Create an S3 bucket in ap-south-1; allow public read on `uploads/*` (or put CloudFront in front).
-2. Attach an instance role allowing `s3:PutObject` and `s3:DeleteObject` on that bucket.
-3. In `deploy/.env`: `STORAGE_DRIVER=s3`, `S3_BUCKET=<bucket>`, `S3_PUBLIC_BASE_URL=https://<bucket>.s3.ap-south-1.amazonaws.com` (or the CloudFront URL).
-4. Copy existing local images to the bucket first:
+**Skip this whole step if you keep `STORAGE_DRIVER=local` (the default).** Local images live in the `uploads` volume, are served by the store itself and are included in the daily backups. They need no bucket, no policy and no role.
 
-   ```bash
-   docker run --rm -v thrift_uploads:/uploads:ro amazon/aws-cli s3 sync /uploads s3://<bucket>/
+The store writes these keys at the root of the bucket:
+
+| Prefix | What | Who may read it |
+| --- | --- | --- |
+| `products/`, `collections/`, `banners/` | Catalogue and homepage images | Everyone (public) |
+| `designs/previews/` | Mock-up previews of customer designs | Everyone (public) |
+| `designs/assets/` | Images customers upload into the design studio. The studio loads them in the browser by URL, so they must be public; the names are random and cannot be guessed. | Everyone (public) |
+| `designs/print/` | Full-resolution print files | **Never public.** Only the store reads them (admin print queue downloads) |
+
+1. S3 → **Create bucket** in ap-south-1, e.g. `yourshop-images`. Under *Block Public Access*, untick **only** the two "bucket policies" options and leave the two "ACLs" options ticked.
+2. Bucket → **Permissions → Bucket policy**. It makes only the public prefixes readable, never `designs/print/`:
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Sid": "PublicStoreImages",
+       "Effect": "Allow",
+       "Principal": "*",
+       "Action": "s3:GetObject",
+       "Resource": [
+         "arn:aws:s3:::yourshop-images/products/*",
+         "arn:aws:s3:::yourshop-images/collections/*",
+         "arn:aws:s3:::yourshop-images/banners/*",
+         "arn:aws:s3:::yourshop-images/designs/previews/*",
+         "arn:aws:s3:::yourshop-images/designs/assets/*"
+       ]
+     }]
+   }
    ```
 
-5. `bash deploy/deploy.sh --no-pull` (the image URL host is baked into the build).
+3. Bucket → **Permissions → CORS**. The studio draws uploaded images on a canvas, which needs CORS:
+
+   ```json
+   [{ "AllowedOrigins": ["https://shop.example.com"], "AllowedMethods": ["GET", "HEAD"], "AllowedHeaders": ["*"], "MaxAgeSeconds": 86400 }]
+   ```
+
+4. IAM → **Roles → Create role** → AWS service, EC2. Add an inline policy that lets the store write, read (print files) and delete its images:
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Effect": "Allow",
+       "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+       "Resource": "arn:aws:s3:::yourshop-images/*"
+     }]
+   }
+   ```
+
+   Then EC2 → the instance → **Actions → Security → Modify IAM role** → choose it. An instance has one role, so add the backup statement from step 13 to this same role if you use both.
+5. In `deploy/.env`: `STORAGE_DRIVER=s3`, `S3_BUCKET=yourshop-images`, `AWS_REGION=ap-south-1`, `S3_PUBLIC_BASE_URL=https://yourshop-images.s3.ap-south-1.amazonaws.com` (or the CloudFront URL).
+6. Copy the existing local images to the bucket, keeping the same keys. Print files are copied too; the bucket policy keeps them private:
+
+   ```bash
+   docker run --rm -v thrift_uploads:/uploads:ro amazon/aws-cli s3 sync /uploads s3://yourshop-images/
+   ```
+
+7. `bash deploy/deploy.sh --no-pull` (the image host is baked into the build). Check that a product image opens. Then check that a print file URL (`https://yourshop-images.s3.ap-south-1.amazonaws.com/designs/print/<any file>`) returns **AccessDenied**.
 
 ## 13. Backups
 
@@ -205,11 +264,7 @@ docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env exec bac
 
 1. Create an S3 bucket with a lifecycle rule that deletes objects after 30 days.
 2. Attach an instance role allowing `s3:PutObject` on `arn:aws:s3:::<bucket>/thrift/*`.
-3. Set `BACKUP_S3_BUCKET=<bucket>` in `deploy/.env`, then recreate only the backup container:
-
-   ```bash
-   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d backup
-   ```
+3. Set `BACKUP_S3_BUCKET=<bucket>` in `deploy/.env`, then `bash deploy/deploy.sh --restart`. This recreates the app, cron and backup containers with the new setting.
 
 Also turn on EBS snapshots as a second layer: EC2 → **Lifecycle Manager** → create a policy for the instance's volume, daily, keep 7.
 
@@ -257,6 +312,16 @@ Tick all of these before announcing the store:
 - [ ] Register a customer, place a Razorpay test order, receive the confirmation email; the admin gets the new-order email.
 - [ ] `docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env logs cron --since 30m` shows `expire-orders ok` every 5 minutes.
 - [ ] `bash deploy/restore.sh list` shows a backup.
+- [ ] **Restore drill.** Prove that the newest dump actually restores by loading it into a scratch database (the live one is untouched). It should print a product count:
+
+  ```bash
+  docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env exec backup sh -c \
+    'f=$(ls -t /backups/db-*.sql.gz | head -n 1) && echo "drill: $f" && dropdb --if-exists drill && createdb drill \
+     && gunzip -c "$f" | psql -d drill -v ON_ERROR_STOP=1 -q >/dev/null \
+     && psql -d drill -c "select count(*) as products from \"Product\"" ; dropdb --if-exists drill'
+  ```
+
+  Repeat the drill every few months.
 - [ ] `https://shop.example.com/robots.txt` allows crawling and `https://shop.example.com/sitemap.xml` lists products.
 - [ ] Admin Settings saved.
 - [ ] Razorpay webhook deliveries are green.
@@ -266,6 +331,7 @@ Tick all of these before announcing the store:
 
 Shortcut for the commands below: `alias dc='docker compose -f ~/store/deploy/docker-compose.prod.yml --env-file ~/store/deploy/.env'` (add it to `~/.bashrc`).
 
+- **Do not run `dc up` yourself.** The app image is tagged with the deployed commit, which only the scripts know. A bare `dc up` looks for `thrift-app:dev`, which does not exist, and fails. Use `bash deploy/deploy.sh` (new code), `bash deploy/deploy.sh --restart` (after editing `deploy/.env`) or `bash deploy/deploy.sh --rollback <tag>`.
 - **Logs:** `dc logs -f app`, `dc logs caddy`, `dc logs cron`, `dc logs backup`.
 - **Status / restart:** `dc ps`, `dc restart app`.
 - **Disk:** `df -h`, `docker system df`, `docker builder prune` (deploys already keep only the 3 newest images).
