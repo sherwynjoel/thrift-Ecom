@@ -214,7 +214,7 @@ export function Studio({ product, initialColor, initialDesign }: StudioProps) {
                   data-testid="studio-empty-hint"
                 >
                   <span className="font-display text-base uppercase leading-none tracking-wide sm:text-xl">Your design here</span>
-                  <span className="text-[10px] leading-tight sm:text-xs">12 × 16 in print area</span>
+                  <span className="text-xs leading-tight">12 × 16 in print area</span>
                 </div>
               )}
               <div ref={api.hostRef} className="absolute inset-0" data-testid="studio-surface">
@@ -235,7 +235,7 @@ export function Studio({ product, initialColor, initialDesign }: StudioProps) {
                   </button>
                 </div>
               )}
-              <p className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-bg/70 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-text-muted backdrop-blur">
+              <p className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-bg/70 px-3 py-1 text-xs uppercase tracking-[0.2em] text-text-muted backdrop-blur">
                 {api.side === "front" ? "Front" : "Back"} · {color}
               </p>
             </div>

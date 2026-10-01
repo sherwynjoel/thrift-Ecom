@@ -106,7 +106,7 @@ export default async function AccountOrderDetailPage({ params, searchParams }: {
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Link href={`/products/${i.productSlug}`} className="line-clamp-2 text-sm font-medium hover:underline">{i.productName}</Link>
+                    <Link href={`/products/${i.productSlug}`} className="line-clamp-2 min-h-11 text-sm font-medium hover:underline">{i.productName}</Link>
                     {isCustomItem(i) && <Badge variant="outline">Custom</Badge>}
                   </div>
                   <p className="text-xs text-text-muted">{i.colorName} / {i.size} × {i.quantity}</p>

@@ -28,7 +28,7 @@ export default async function AccountOrdersPage({ searchParams }: { searchParams
       {orders.items.length === 0 ? (
         <div className="rounded-md border border-dashed border-border bg-surface p-8" data-testid="orders-empty">
           <p className="font-display text-2xl">No orders yet</p>
-          <Link href="/collections/new-drops" className="mt-4 inline-block text-sm underline-offset-4 hover:underline">Browse new drops</Link>
+          <Link href="/collections/new-drops" className="mt-4 inline-flex min-h-11 items-center text-sm underline-offset-4 hover:underline">Browse new drops</Link>
         </div>
       ) : (
         <>

@@ -47,7 +47,7 @@ export default async function CollectionPage({ params, searchParams }: Props) {
         <SortSelect />
       </header>
       <div className="flex gap-10">
-        <FilterRail facets={facets} />
+        <FilterRail facets={facets} resultCount={products.total} />
         <section className="min-w-0 flex-1">
           <ProductGrid products={products.items} emptyMessage="No tees match those filters." />
           <LoadMore key={endpoint} endpoint={endpoint} initialPage={products.page} hasMore={products.hasMore} />

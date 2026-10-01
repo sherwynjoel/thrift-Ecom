@@ -13,7 +13,7 @@ export function CustomPrintThumbs({ front, back, exclude, size = 64, className }
       {shots.map(({ label, url }) => (
         <figure key={label} className="text-center">
           <img src={url} alt={`${label} of your custom tee`} width={size} height={Math.round(size * 1.25)} className="rounded-sm border border-border bg-surface object-cover" loading="lazy" />
-          <figcaption className="mt-0.5 text-[10px] uppercase tracking-wide text-text-muted">{label}</figcaption>
+          <figcaption className="mt-0.5 text-xs uppercase tracking-wide text-text-muted">{label}</figcaption>
         </figure>
       ))}
     </div>

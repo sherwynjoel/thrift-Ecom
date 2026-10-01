@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { motion, useAnimate } from "motion/react";
+import { useAnimate } from "motion/react";
 import { toast } from "sonner";
 import { Minus, Plus } from "lucide-react";
 import { addToCartAction } from "@/app/(storefront)/cart/actions";
@@ -13,6 +13,7 @@ import { MAX_QTY_PER_LINE } from "@/lib/catalog-types";
 import { colorsOf, defaultColor, sizesFor } from "@/lib/variant-matrix";
 import { formatPaise } from "@/lib/money";
 import { formatRating } from "@/lib/rating";
+import { onRadioGroupKeyDown, radioTabIndex } from "@/lib/roving-radio";
 import { cn } from "@/lib/utils";
 import type { ProductDetail } from "@/server/services/catalog";
 import { useCartUI } from "./cart-ui";
@@ -33,6 +34,16 @@ export function ProductPurchase({ product, rating }: { product: ProductDetail; r
   const [pending, start] = useTransition();
   const [scope, animate] = useAnimate();
   const setOpen = useCartUI((s) => s.setOpen);
+  // One visible CTA at a time: the phone sticky bar hides while the main Add to bag button is on screen.
+  const ctaRef = useRef<HTMLButtonElement>(null);
+  const [ctaOnScreen, setCtaOnScreen] = useState(true);
+  useEffect(() => {
+    const el = ctaRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([entry]) => setCtaOnScreen(entry.isIntersecting));
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   const sizes = color ? sizesFor(product.variants, color) : [];
   const chosen = sizes.find((s) => s.size === size) ?? null;
@@ -89,9 +100,11 @@ export function ProductPurchase({ product, rating }: { product: ProductDetail; r
         {colors.length > 0 && (
           <div>
             <p className="mb-2 text-sm">Color: <span className="text-text-muted">{color}</span></p>
-            <div className="flex flex-wrap gap-2">
-              {colors.map((c) => (
-                <button key={c.name} type="button" onClick={() => pickColor(c.name)} aria-label={c.name} aria-pressed={c.name === color} title={c.name} className={cn("size-8 rounded-full border-2", c.name === color ? "border-brand" : "border-border")} style={{ backgroundColor: c.hex }} data-testid="color-swatch" />
+            <div className="-ml-1.5 flex flex-wrap gap-1" role="radiogroup" aria-label="Color" onKeyDown={onRadioGroupKeyDown}>
+              {colors.map((c, i) => (
+                <button key={c.name} type="button" role="radio" aria-checked={c.name === color} tabIndex={radioTabIndex(colors, i, (x) => x.name === color)} onClick={() => pickColor(c.name)} aria-label={c.name} title={c.name} className={cn("size-11 rounded-full border-2 p-1", c.name === color ? "border-brand" : "border-transparent")} data-testid="color-swatch">
+                  <span className="block size-full rounded-full border border-border" style={{ backgroundColor: c.hex }} />
+                </button>
               ))}
             </div>
           </div>
@@ -102,23 +115,23 @@ export function ProductPurchase({ product, rating }: { product: ProductDetail; r
             <p className={cn("text-sm", sizeError && "text-danger")}>{sizeError ? "Pick a size to continue" : "Select size"}</p>
             <SizeGuide fit={product.fit} />
           </div>
-          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Size">
-            {sizes.map((s) => (
-              <button key={s.size} type="button" role="radio" aria-checked={s.size === size} disabled={s.stock === 0} onClick={() => { setSize(s.size); setSizeError(false); setQty(1); }} className={cn("relative min-w-12 rounded-full border px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40", s.size === size ? "border-brand bg-brand text-brand-ink" : "border-border hover:border-text")} data-testid="size-chip">
+          <div className="flex flex-wrap gap-x-2 gap-y-6 pb-4" role="radiogroup" aria-label="Size" onKeyDown={onRadioGroupKeyDown}>
+            {sizes.map((s, i) => (
+              <button key={s.size} type="button" role="radio" aria-checked={s.size === size} tabIndex={radioTabIndex(sizes, i, (x) => x.size === size, (x) => x.stock === 0)} disabled={s.stock === 0} onClick={() => { setSize(s.size); setSizeError(false); setQty(1); }} className={cn("relative min-h-11 min-w-12 rounded-full border px-4 text-sm disabled:cursor-not-allowed disabled:opacity-40", s.size === size ? "border-brand bg-brand text-brand-ink" : "border-border hover:border-text")} data-testid="size-chip">
                 {s.size}
-                {s.stock > 0 && s.stock < 5 && <span className="absolute -bottom-4 left-0 right-0 text-center text-[10px] text-danger">{s.stock} left</span>}
+                {s.stock > 0 && s.stock < 5 && <span className="absolute -bottom-5 left-0 right-0 text-center text-xs text-danger">{s.stock} left</span>}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="flex items-center gap-4 pt-2">
+        <div className="flex items-center gap-3 pt-2">
           <div className="inline-flex items-center rounded-full border border-border">
-            <button type="button" onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="Decrease quantity" className="px-3 py-2"><Minus className="size-4" /></button>
-            <span className="min-w-8 text-center" data-testid="qty">{qty}</span>
-            <button type="button" onClick={() => setQty((q) => Math.min(maxQty, q + 1))} aria-label="Increase quantity" className="px-3 py-2"><Plus className="size-4" /></button>
+            <button type="button" onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="Decrease quantity" className="inline-flex size-11 items-center justify-center"><Minus className="size-4" /></button>
+            <span className="min-w-6 text-center" data-testid="qty">{qty}</span>
+            <button type="button" onClick={() => setQty((q) => Math.min(maxQty, q + 1))} aria-label="Increase quantity" className="inline-flex size-11 items-center justify-center"><Plus className="size-4" /></button>
           </div>
-          <Button size="lg" onClick={submit} disabled={pending || product.soldOut} className="flex-1 font-display text-lg tracking-wide" data-testid="add-to-cart">
+          <Button ref={ctaRef} size="lg" onClick={submit} disabled={pending || product.soldOut} className="h-11 flex-1 font-display text-lg tracking-wide" data-testid="add-to-cart">
             {product.soldOut ? "Sold out" : pending ? "Adding…" : "Add to bag"}
           </Button>
           <WishlistButton productId={product.id} productName={product.name} className="shrink-0 border border-border" />
@@ -137,10 +150,15 @@ export function ProductPurchase({ product, rating }: { product: ProductDetail; r
         </ul>
       </div>
 
-      <motion.div initial={{ y: 80 }} animate={{ y: 0 }} className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3 border-t border-border bg-bg/95 px-4 py-3 backdrop-blur lg:hidden" data-testid="sticky-bar">
+      <div
+        className={cn("fixed inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3 border-t border-border bg-bg/95 px-4 pt-3 pb-safe backdrop-blur transition-transform duration-200 lg:hidden", ctaOnScreen && "translate-y-full")}
+        aria-hidden={ctaOnScreen}
+        inert={ctaOnScreen}
+        data-testid="sticky-bar"
+      >
         <span className="font-display text-xl">{formatPaise(pricePaise)}</span>
-        <Button onClick={submit} disabled={pending || product.soldOut} className="font-display text-base tracking-wide">{product.soldOut ? "Sold out" : "Add to bag"}</Button>
-      </motion.div>
+        <Button onClick={submit} disabled={pending || product.soldOut} className="h-11 px-5 font-display text-base tracking-wide">{product.soldOut ? "Sold out" : "Add to bag"}</Button>
+      </div>
     </div>
   );
 }

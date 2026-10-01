@@ -137,7 +137,7 @@ export function OrdersTable({ rows, exportQuery }: { rows: AdminOrderRow[]; expo
 
       {count > 0 && (
         <div
-          className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-bg p-3 md:sticky md:bottom-4 md:mt-4 md:rounded-md md:border print:hidden"
+          className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-bg p-3 pb-safe md:sticky md:pb-3 md:bottom-4 md:mt-4 md:rounded-md md:border print:hidden"
           role="region"
           aria-label="Bulk actions"
           data-testid="bulk-bar"

@@ -75,17 +75,17 @@ export function CollectionEditor({ collection }: { collection: AdminCollectionDe
     <>
       <form onSubmit={(e) => { e.preventDefault(); save(); }} className="max-w-2xl space-y-4 rounded-md border border-border bg-surface p-5" data-testid="collection-editor">
         <div><Label htmlFor="c-name">Name</Label><Input id="c-name" value={name} onChange={(e) => setName(e.target.value)} className="mt-1 bg-bg" /><FieldError errors={errors.name} /></div>
-        <div><Label htmlFor="c-slug">URL slug</Label><Input id="c-slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="Leave blank to generate" className="mt-1 bg-bg" /><FieldError errors={errors.slug} /></div>
+        <div><Label htmlFor="c-slug">URL slug</Label><Input id="c-slug" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="Leave blank to generate" className="mt-1 bg-bg" /><FieldError errors={errors.slug} /></div>
         <div>
           <Label htmlFor="c-desc">Description</Label>
           <textarea id="c-desc" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mt-1 w-full rounded-md border border-border bg-bg p-3 text-sm" />
           <FieldError errors={errors.description} />
         </div>
         <div className="flex flex-wrap items-center gap-6 text-sm">
-          <label className="flex items-center gap-2"><input type="checkbox" checked={isActive} onChange={(e) => setActive(e.target.checked)} className="accent-brand" />Visible on the store</label>
-          <label className="flex items-center gap-2"><input type="checkbox" checked={isFeatured} onChange={(e) => setFeatured(e.target.checked)} className="accent-brand" />Featured on the home page</label>
+          <label className="flex min-h-11 items-center gap-3"><input type="checkbox" checked={isActive} onChange={(e) => setActive(e.target.checked)} className="size-5 accent-brand" />Visible on the store</label>
+          <label className="flex min-h-11 items-center gap-3"><input type="checkbox" checked={isFeatured} onChange={(e) => setFeatured(e.target.checked)} className="size-5 accent-brand" />Featured on the home page</label>
           <div>
-            <label htmlFor="c-order" className="flex items-center gap-2">Order<input id="c-order" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} inputMode="numeric" className="h-8 w-16 rounded-md border border-border bg-bg px-2" /></label>
+            <label htmlFor="c-order" className="flex items-center gap-2">Order<input id="c-order" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} inputMode="numeric" className="h-11 w-16 lg:h-8 rounded-md border border-border bg-bg px-2" /></label>
             <FieldError errors={errors.sortOrder} />
           </div>
         </div>

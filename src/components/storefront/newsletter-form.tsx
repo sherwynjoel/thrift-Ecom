@@ -16,8 +16,8 @@ export function NewsletterForm() {
         setEmail("");
       }}
     >
-      <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email for drops and offers" aria-label="Email" className="bg-surface" />
-      <Button type="submit" variant="secondary">Join</Button>
+      <Input type="email" inputMode="email" autoComplete="email" autoCapitalize="none" enterKeyHint="send" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email for drops and offers" aria-label="Email" className="h-11 bg-surface" />
+      <Button type="submit" variant="secondary" className="h-11 px-4">Join</Button>
     </form>
   );
 }

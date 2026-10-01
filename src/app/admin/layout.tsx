@@ -14,18 +14,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const [toShip, toPrint, toReview] = await Promise.all([countToShip(), countPrintQueue(), countPendingReviews()]);
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[220px_1fr] print:block" data-testid="admin-shell">
-      <aside className="flex flex-wrap items-center justify-between gap-4 border-b border-border bg-surface p-4 lg:flex-col lg:items-stretch lg:justify-start lg:gap-0 lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto lg:border-b-0 lg:border-r print:hidden">
-        <div className="lg:mb-8">
-          <p className="font-display text-2xl uppercase">{BRAND.name}</p>
+      {/* Below lg: a sticky top bar (menu drawer, brand, sign out). lg+: the sticky sidebar column.
+          One SignOutButton serves both, so data-testid="sign-out" is never duplicated. */}
+      <aside className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-surface/95 px-4 backdrop-blur lg:h-dvh lg:flex-col lg:items-stretch lg:gap-0 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:bg-surface lg:p-4 lg:backdrop-blur-none print:hidden">
+        <AdminNav toShipCount={toShip} printQueueCount={toPrint} pendingReviewCount={toReview} />
+        <div className="flex min-w-0 items-baseline gap-2 lg:order-1 lg:mb-8 lg:block">
+          <p className="truncate font-display text-xl uppercase lg:text-2xl">{BRAND.name}</p>
           <p className="text-xs uppercase tracking-widest text-text-muted">Admin</p>
         </div>
-        {/* Reordered per breakpoint so the same nodes form a header row (brand + sign out) with the
-            nav below on phones, and the original brand / nav / sign-out column on lg+, without ever
-            mounting <SignOutButton> twice (it would duplicate data-testid="sign-out"). */}
-        <div className="order-2 w-full lg:order-1">
-          <AdminNav toShipCount={toShip} printQueueCount={toPrint} pendingReviewCount={toReview} />
-        </div>
-        <div className="order-1 lg:order-2 lg:mt-6">
+        <div className="ml-auto lg:order-3 lg:ml-0 lg:mt-6">
           <SignOutButton />
         </div>
       </aside>

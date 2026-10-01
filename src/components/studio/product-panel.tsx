@@ -3,6 +3,7 @@
 import { Check } from "lucide-react";
 import { colorsOf, sizesFor } from "@/lib/variant-matrix";
 import { isDarkHex } from "@/lib/studio/shirt";
+import { onRadioGroupKeyDown, radioTabIndex } from "@/lib/roving-radio";
 import { cn } from "@/lib/utils";
 import type { StudioProduct } from "@/server/services/designs";
 
@@ -36,8 +37,8 @@ export function ProductPanel({ product, color, size, onColor, onSize, sizeError 
       {colors.length > 0 && (
         <div>
           <p className="mb-3 text-sm">Colour: <span className="text-text-muted" data-testid="studio-color-name">{color}</span></p>
-          <div role="radiogroup" aria-label="Colour" className="flex flex-wrap gap-2">
-            {colors.map((c) => {
+          <div role="radiogroup" aria-label="Colour" className="flex flex-wrap gap-2" onKeyDown={onRadioGroupKeyDown}>
+            {colors.map((c, i) => {
               const active = c.name === color;
               return (
                 <button
@@ -45,6 +46,7 @@ export function ProductPanel({ product, color, size, onColor, onSize, sizeError 
                   type="button"
                   role="radio"
                   aria-checked={active}
+                  tabIndex={radioTabIndex(colors, i, (x) => x.name === color)}
                   aria-label={c.name}
                   title={c.name}
                   onClick={() => onColor(c.name)}
@@ -67,8 +69,8 @@ export function ProductPanel({ product, color, size, onColor, onSize, sizeError 
         <p className={cn("mb-3 text-sm", sizeError && "text-danger")}>
           {sizeError ? "Pick a size to continue" : <>Size{size && <>: <span className="text-text-muted">{size}</span></>}</>}
         </p>
-        <div role="radiogroup" aria-label="Size" className="flex flex-wrap gap-x-2 gap-y-5 pb-2">
-          {sizes.map((s) => {
+        <div role="radiogroup" aria-label="Size" className="flex flex-wrap gap-x-2 gap-y-6 pb-4" onKeyDown={onRadioGroupKeyDown}>
+          {sizes.map((s, i) => {
             const active = s.size === size;
             return (
               <button
@@ -76,6 +78,7 @@ export function ProductPanel({ product, color, size, onColor, onSize, sizeError 
                 type="button"
                 role="radio"
                 aria-checked={active}
+                tabIndex={radioTabIndex(sizes, i, (x) => x.size === size, (x) => x.stock === 0)}
                 disabled={s.stock === 0}
                 onClick={() => onSize(s.size)}
                 className={cn(
@@ -85,7 +88,7 @@ export function ProductPanel({ product, color, size, onColor, onSize, sizeError 
                 data-testid="studio-size"
               >
                 {s.size}
-                {s.stock > 0 && s.stock < 5 && <span className="absolute inset-x-0 -bottom-4 text-center text-[10px] text-danger">{s.stock} left</span>}
+                {s.stock > 0 && s.stock < 5 && <span className="absolute inset-x-0 -bottom-5 text-center text-xs text-danger">{s.stock} left</span>}
               </button>
             );
           })}

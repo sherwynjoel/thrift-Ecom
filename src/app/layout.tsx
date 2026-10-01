@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Toaster } from "@/components/ui/sonner";
 import { BRAND } from "@/config/brand";
 import { DEFAULT_OG_IMAGE } from "@/lib/seo";
@@ -13,6 +13,9 @@ export const metadata: Metadata = {
   openGraph: { type: "website", siteName: BRAND.name, locale: "en_IN", images: [{ ...DEFAULT_OG_IMAGE, alt: BRAND.name }] },
   twitter: { card: "summary_large_image" },
 };
+
+// Never disable zoom; viewportFit "cover" exposes the notch/home-bar insets to env(safe-area-inset-*).
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#0A0A0A" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

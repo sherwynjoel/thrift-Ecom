@@ -72,7 +72,7 @@ export function CollectionProducts({ collectionId, products }: { collectionId: s
             <li key={p.id} className="flex flex-wrap items-center gap-2 py-2 sm:flex-nowrap" data-testid="collection-product">
               <span className="w-6 shrink-0 text-right text-xs text-text-muted">{i + 1}</span>
               <span className="relative size-10 shrink-0 overflow-hidden rounded-sm bg-surface-raised">{p.imageUrl && <Image src={p.imageUrl} alt="" fill sizes="40px" className="object-cover" />}</span>
-              <Link href={`/admin/products/${p.id}`} className="min-w-0 flex-1 basis-32 truncate text-sm hover:underline">{p.name}</Link>
+              <Link href={`/admin/products/${p.id}`} className="flex min-h-11 min-w-0 flex-1 basis-32 items-center truncate text-sm hover:underline">{p.name}</Link>
               <StatusBadge status={p.status} />
               <div className="ml-auto flex items-center gap-1 sm:ml-0">
                 <button type="button" onClick={() => move(i, -1)} disabled={i === 0 || pending} aria-label={`Move ${p.name} up`} className={iconButton}><ArrowUp className="size-5" /></button>

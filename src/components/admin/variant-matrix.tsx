@@ -43,7 +43,7 @@ export function VariantMatrix({ state, onChange, inCarts }: { state: ProductForm
         <legend className="mb-2 text-sm font-medium">Sizes</legend>
         <div className="flex flex-wrap gap-2">
           {SIZES.map((s) => (
-            <button key={s} type="button" aria-pressed={state.sizes.includes(s)} onClick={() => toggleSize(s)} className={cn("min-w-12 rounded-full border px-3 py-1 text-sm", state.sizes.includes(s) ? "border-brand bg-brand text-brand-ink" : "border-border hover:border-text")} data-testid="size-toggle">{s}</button>
+            <button key={s} type="button" aria-pressed={state.sizes.includes(s)} onClick={() => toggleSize(s)} className={cn("min-h-11 min-w-12 rounded-full border px-3 text-sm lg:min-h-8", state.sizes.includes(s) ? "border-brand bg-brand text-brand-ink" : "border-border hover:border-text")} data-testid="size-toggle">{s}</button>
           ))}
         </div>
       </fieldset>
@@ -53,9 +53,9 @@ export function VariantMatrix({ state, onChange, inCarts }: { state: ProductForm
         <ul className="space-y-2">
           {state.colors.map((c, i) => (
             <li key={i} className="flex items-center gap-2">
-              <input type="color" value={c.hex} onChange={(e) => setColor(i, { hex: e.target.value })} aria-label={`Color ${i + 1} swatch`} className="size-9 cursor-pointer rounded border border-border bg-transparent" />
-              <input value={c.name} onChange={(e) => setColor(i, { name: e.target.value })} placeholder="Color name, e.g. Black" aria-label={`Color ${i + 1} name`} className="h-9 w-56 rounded-md border border-border bg-bg px-3 text-sm" data-testid="color-name" />
-              <button type="button" onClick={() => removeColor(i)} aria-label={`Remove color ${c.name || i + 1}`} className="p-2 text-text-muted hover:text-danger"><Trash2 className="size-4" /></button>
+              <input type="color" value={c.hex} onChange={(e) => setColor(i, { hex: e.target.value })} aria-label={`Color ${i + 1} swatch`} className="size-11 shrink-0 cursor-pointer rounded border border-border bg-transparent lg:size-9" />
+              <input value={c.name} onChange={(e) => setColor(i, { name: e.target.value })} placeholder="Color name, e.g. Black" aria-label={`Color ${i + 1} name`} className="h-11 min-w-0 flex-1 rounded-md border border-border bg-bg px-3 text-sm sm:w-56 sm:flex-none lg:h-9" data-testid="color-name" />
+              <button type="button" onClick={() => removeColor(i)} aria-label={`Remove color ${c.name || i + 1}`} className="inline-flex size-11 shrink-0 items-center justify-center text-text-muted hover:text-danger"><Trash2 className="size-4" /></button>
             </li>
           ))}
         </ul>
@@ -66,9 +66,12 @@ export function VariantMatrix({ state, onChange, inCarts }: { state: ProductForm
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm">
             <span className="text-text-muted">Set stock for every variant:</span>
-            <input value={fill} onChange={(e) => setFill(e.target.value)} inputMode="numeric" aria-label="Stock for all variants" className="h-8 w-20 rounded-md border border-border bg-bg px-2" />
+            <input value={fill} onChange={(e) => setFill(e.target.value)} inputMode="numeric" aria-label="Stock for all variants" className="h-11 w-20 rounded-md border border-border bg-bg px-2 lg:h-8" />
             <Button type="button" size="sm" variant="secondary" onClick={fillStock}>Apply</Button>
           </div>
+          <div className="relative">
+          {/* Phones: the matrix scrolls inside its own box; the fade hints at more columns to the right. */}
+          <div aria-hidden="true" className="pointer-events-none absolute inset-y-px right-px z-10 w-8 rounded-r-md bg-gradient-to-l from-bg to-transparent md:hidden" />
           <div className="overflow-x-auto rounded-md border border-border">
             <table className="w-full min-w-[560px] text-sm" data-testid="variant-rows">
               <thead className="bg-surface text-left text-text-muted"><tr><th className="p-2">Color</th><th>Size</th><th>Price override (₹)</th><th>Stock</th><th className="p-2">Notes</th></tr></thead>
@@ -93,7 +96,7 @@ export function VariantMatrix({ state, onChange, inCarts }: { state: ProductForm
                       />
                     </td>
                     <td>
-                      <input type="number" min={0} value={r.stock} aria-label={`Stock ${r.colorName} ${r.size}`} onChange={(e) => setRow(r.key, { stock: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} className="h-11 w-24 rounded-md border border-border bg-bg px-2 sm:h-8" data-testid="stock-input" />
+                      <input type="number" min={0} inputMode="numeric" value={r.stock} aria-label={`Stock ${r.colorName} ${r.size}`} onChange={(e) => setRow(r.key, { stock: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} className="h-11 w-24 rounded-md border border-border bg-bg px-2 sm:h-8" data-testid="stock-input" />
                     </td>
                     <td className="p-2 text-xs text-text-muted">{r.id && inCarts[r.id] ? `In ${inCarts[r.id]} bag(s), keep it or set stock to 0` : r.id ? "" : "New"}</td>
                   </tr>
@@ -101,6 +104,7 @@ export function VariantMatrix({ state, onChange, inCarts }: { state: ProductForm
                 })}
               </tbody>
             </table>
+          </div>
           </div>
         </div>
       ) : (

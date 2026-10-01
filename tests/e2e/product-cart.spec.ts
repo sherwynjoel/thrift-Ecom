@@ -32,6 +32,25 @@ test("color swatch switches the gallery", async ({ page }) => {
   await expect.poll(async () => page.getByTestId("gallery").locator("img").first().getAttribute("src")).not.toBe(first);
 });
 
+test("colour and size radio groups are one tab stop with arrow-key selection", async ({ page }) => {
+  await page.goto("/products/static-noise-oversized-tee");
+  const colors = page.getByRole("radiogroup", { name: "Color" }).getByRole("radio");
+  await expect(colors.first()).toHaveAttribute("aria-checked", "true");
+  await expect(colors.nth(1)).toHaveAttribute("tabindex", "-1");
+  await colors.first().focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(colors.nth(1)).toBeFocused();
+  await expect(colors.nth(1)).toHaveAttribute("aria-checked", "true");
+  await expect(colors.nth(1)).toHaveAttribute("tabindex", "0");
+
+  const sizes = page.getByRole("radiogroup", { name: "Size" }).locator('[role="radio"]:not([disabled])');
+  await expect(sizes.first()).toHaveAttribute("tabindex", "0");
+  await sizes.first().focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(sizes.nth(1)).toBeFocused();
+  await expect(sizes.nth(1)).toHaveAttribute("aria-checked", "true");
+});
+
 test("checkout asks guests to log in and keeps the destination", async ({ page }) => {
   await addFirstProductToBag(page);
   await page.goto("/checkout");
@@ -40,7 +59,7 @@ test("checkout asks guests to log in and keeps the destination", async ({ page }
 
 test("clicking checkout in the drawer navigates and closes the drawer", async ({ page }) => {
   await addFirstProductToBag(page);
-  await page.getByTestId("cart-drawer").getByRole("button", { name: /^checkout$/i }).click();
+  await page.getByTestId("cart-drawer").getByRole("link", { name: /^checkout$/i }).click();
   await expect(page).toHaveURL(/(\/checkout|next=%2Fcheckout)/);
   await expect(page.getByTestId("cart-drawer")).toBeHidden();
 });

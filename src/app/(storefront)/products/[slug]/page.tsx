@@ -46,9 +46,9 @@ export default async function ProductPage({ params }: Props) {
 
   return (
     <div className="container-x py-8 pb-28 lg:pb-10">
-      <nav className="mb-6 text-xs text-text-muted" aria-label="Breadcrumb">
-        <Link href="/" className="hover:text-text">Home</Link>
-        {crumb && <> / <Link href={`/collections/${crumb.slug}`} className="hover:text-text">{crumb.name}</Link></>}
+      <nav className="-mt-3 mb-3 text-xs text-text-muted" aria-label="Breadcrumb">
+        <Link href="/" className="inline-flex min-h-11 min-w-11 items-center align-middle hover:text-text">Home</Link>
+        {crumb && <> / <Link href={`/collections/${crumb.slug}`} className="inline-flex min-h-11 items-center align-middle hover:text-text">{crumb.name}</Link></>}
         {" / "}<span className="text-text">{product.name}</span>
       </nav>
       <ProductPurchase product={product} rating={summary.count > 0 ? { average: summary.average, count: summary.count } : null} />

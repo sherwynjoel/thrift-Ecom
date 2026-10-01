@@ -14,7 +14,7 @@ export function RegisterForm({ next }: { next: string }) {
     <form action={action} className="space-y-4" data-testid="register-form">
       <input type="hidden" name="next" value={next} />
       <div><Label htmlFor="name">Name</Label><Input id="name" name="name" autoComplete="name" required className="mt-1 bg-bg" /><FieldError errors={state.fieldErrors?.name} /></div>
-      <div><Label htmlFor="email">Email</Label><Input id="email" name="email" type="email" autoComplete="email" required className="mt-1 bg-bg" /><FieldError errors={state.fieldErrors?.email} /></div>
+      <div><Label htmlFor="email">Email</Label><Input id="email" name="email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" required className="mt-1 bg-bg" /><FieldError errors={state.fieldErrors?.email} /></div>
       <div><Label htmlFor="password">Password</Label><Input id="password" name="password" type="password" autoComplete="new-password" required minLength={8} className="mt-1 bg-bg" /><FieldError errors={state.fieldErrors?.password} /></div>
       {state.error && <p className="text-sm text-danger" role="alert" data-testid="form-error">{state.error}</p>}
       <Button type="submit" disabled={pending} className="w-full font-display text-lg tracking-wide">{pending ? "Creating…" : "Create account"}</Button>
