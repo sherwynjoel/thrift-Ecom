@@ -24,3 +24,9 @@ coverage/
 # alternate dev build dir (NEXT_DIST_DIR)
 .next-dev/
 .next-e2e/
+
+# deployment (Phase 4)
+!deploy/.env.production.example
+deploy/.current-version
+deploy/.previous-version
+.audit/
