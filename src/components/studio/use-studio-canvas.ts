@@ -177,8 +177,9 @@ export function useStudioCanvas({ families, initial, inkHex }: { families: Recor
       if (disposed || !canvasElRef.current || !hostRef.current) return;
       fabricRef.current = f;
       const c = new f.Canvas(canvasElRef.current, {
+        // True at construction: Fabric bakes the canvas touch-action CSS here (false would mean "none", so no swipe could scroll).
         // Toggled per touch below: swipes on empty stage scroll the page, touches on a layer drag it.
-        preserveObjectStacking: true, controlsAboveOverlay: true, allowTouchScrolling: false,
+        preserveObjectStacking: true, controlsAboveOverlay: true, allowTouchScrolling: true,
         selectionColor: "rgba(212,255,63,0.12)", selectionBorderColor: BRAND, selectionLineWidth: 1.5,
       });
       canvasRef.current = c;
