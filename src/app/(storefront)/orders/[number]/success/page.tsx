@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { CircleCheck, Loader2 } from "lucide-react";
+import { TrackEvent } from "@/components/analytics/track-event";
 import { AutoRefresh } from "@/components/storefront/checkout/auto-refresh";
 import { RetryPaymentButton } from "@/components/storefront/checkout/retry-payment-button";
 import { PriceBreakup } from "@/components/storefront/price-breakup";
@@ -12,12 +13,13 @@ import { addressLines, formatPhone } from "@/lib/address-format";
 import { formatTimeIst } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
 import { isPaidStatus } from "@/lib/order-status";
+import { NO_INDEX } from "@/lib/seo";
 import { auth } from "@/server/auth";
 import { NotFoundError } from "@/server/errors";
 import { orderDiscountLabel, type CustomerOrderView as OrderView } from "@/server/services/order-records";
 import { getOrderForUser } from "@/server/services/orders";
 
-export const metadata: Metadata = { title: "Your order", robots: { index: false } };
+export const metadata: Metadata = { title: "Your order", robots: NO_INDEX };
 export const dynamic = "force-dynamic";
 
 type PaymentFlag = "failed" | "dismissed" | "verifying" | undefined;
@@ -78,6 +80,16 @@ function Confirmed({ order }: { order: OrderView }) {
         <Button render={<Link href={`/account/orders/${encodeURIComponent(order.number)}`} />} nativeButton={false} className={actionBtn}>View order</Button>
         <Button render={<Link href="/collections/new-drops" />} nativeButton={false} variant="secondary" className={actionBtn}>Keep shopping</Button>
       </div>
+      <TrackEvent
+        onceKey={`purchase:${order.number}`}
+        event={{
+          name: "purchase",
+          transactionId: order.number,
+          valuePaise: order.totalPaise,
+          shippingPaise: order.shippingPaise,
+          items: order.items.map((i) => ({ id: i.productId ?? i.sku, name: i.productName, pricePaise: i.unitPricePaise, quantity: i.quantity, variant: `${i.colorName} / ${i.size}` })),
+        }}
+      />
     </section>
   );
 }

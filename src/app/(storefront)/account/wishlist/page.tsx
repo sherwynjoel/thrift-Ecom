@@ -3,10 +3,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AccountNav } from "@/components/storefront/account/account-nav";
 import { ProductGrid } from "@/components/storefront/product-grid";
+import { NO_INDEX } from "@/lib/seo";
 import { auth } from "@/server/auth";
 import { listWishlist } from "@/server/services/wishlist";
 
-export const metadata: Metadata = { title: "Wishlist", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "Wishlist", robots: NO_INDEX };
 
 export default async function WishlistPage() {
   const session = await auth();

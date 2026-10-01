@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Markdown } from "@/lib/markdown";
+import { metaDescription } from "@/lib/seo";
 import { readPage } from "@/server/content";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -8,7 +9,8 @@ type Props = { params: Promise<{ slug: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const page = await readPage(slug);
-  return { title: page?.title ?? "Not found" };
+  if (!page) return { title: "Not found" };
+  return { title: page.title, description: metaDescription(page.body, page.title), alternates: { canonical: `/pages/${slug}` } };
 }
 
 export default async function StaticPage({ params }: Props) {

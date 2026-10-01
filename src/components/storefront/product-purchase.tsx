@@ -8,6 +8,7 @@ import { Minus, Plus } from "lucide-react";
 import { addToCartAction } from "@/app/(storefront)/cart/actions";
 import { Button } from "@/components/ui/button";
 import { BRAND } from "@/config/brand";
+import { track } from "@/lib/analytics";
 import { MAX_QTY_PER_LINE } from "@/lib/catalog-types";
 import { colorsOf, defaultColor, sizesFor } from "@/lib/variant-matrix";
 import { formatPaise } from "@/lib/money";
@@ -49,6 +50,7 @@ export function ProductPurchase({ product, rating }: { product: ProductDetail; r
       if (r.ok) {
         toast.success("Added to your bag");
         setOpen(true);
+        track({ name: "add_to_cart", item: { id: product.id, name: product.name, pricePaise, quantity: qty, variant: `${color} / ${chosen.size}` } });
       } else {
         toast.error(r.message);
       }

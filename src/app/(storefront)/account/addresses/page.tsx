@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AccountNav } from "@/components/storefront/account/account-nav";
 import { AddressBook } from "@/components/storefront/account/address-book";
+import { NO_INDEX } from "@/lib/seo";
 import { auth } from "@/server/auth";
 import { listAddresses } from "@/server/services/addresses";
 
-export const metadata: Metadata = { title: "Addresses" };
+export const metadata: Metadata = { title: "Addresses", robots: NO_INDEX };
 
 export default async function AddressesPage() {
   const session = await auth();

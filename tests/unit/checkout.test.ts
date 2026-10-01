@@ -173,7 +173,7 @@ describe("payment failure events (review M4) and missing amounts (M6)", () => {
 });
 
 describe("checkout form key (review I1, N1)", () => {
-  const lines = [{ variantId: "v1", productName: "T", productSlug: "t", imageUrl: null, size: "M", colorName: "Black", unitPricePaise: 59900, quantity: 2, lineTotalPaise: 119800, designId: null, customLabel: null }];
+  const lines = [{ variantId: "v1", productId: "p1", productName: "T", productSlug: "t", imageUrl: null, size: "M", colorName: "Black", unitPricePaise: 59900, quantity: 2, lineTotalPaise: 119800, designId: null, customLabel: null }];
   const base = { subtotalPaise: 119800, offer: null, coupon: null, applied: null, discountPaise: 0, shippingPaise: 0, totalPaise: 119800 } as const;
   const withOffer = { ...base, offer: { label: "Any 2", discountPaise: 19900 }, applied: "offer" as const, discountPaise: 19900, totalPaise: 99900 };
 

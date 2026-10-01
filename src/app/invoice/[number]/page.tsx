@@ -4,12 +4,13 @@ import { InvoiceDocument } from "@/components/print/invoice-document";
 import { PageSize } from "@/components/print/page-size";
 import { PrintToolbar } from "@/components/print/print-toolbar";
 import { isPaidStatus } from "@/lib/order-status";
+import { NO_INDEX } from "@/lib/seo";
 import { auth } from "@/server/auth";
 import { NotFoundError } from "@/server/errors";
 import { getOrderForUser } from "@/server/services/orders";
 import { getSettings } from "@/server/services/settings";
 
-export const metadata: Metadata = { title: "Invoice", robots: { index: false } };
+export const metadata: Metadata = { title: "Invoice", robots: NO_INDEX };
 
 export default async function InvoicePage({ params }: { params: Promise<{ number: string }> }) {
   const { number } = await params;

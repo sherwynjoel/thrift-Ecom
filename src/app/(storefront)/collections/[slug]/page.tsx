@@ -4,6 +4,8 @@ import { FilterRail } from "@/components/storefront/filter-rail";
 import { LoadMore } from "@/components/storefront/load-more";
 import { ProductGrid } from "@/components/storefront/product-grid";
 import { SortSelect } from "@/components/storefront/sort-select";
+import { BRAND } from "@/config/brand";
+import { collectionMetadata } from "@/lib/seo";
 import { NotFoundError } from "@/server/errors";
 import { getCollectionBySlug, getFacets, listProducts } from "@/server/services/catalog";
 import { parseProductQuery } from "@/lib/validation/catalog";
@@ -22,7 +24,7 @@ async function load(slug: string) {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const collection = await load(slug);
-  return { title: collection.name, description: collection.description || undefined };
+  return collectionMetadata(collection, BRAND.name);
 }
 
 export default async function CollectionPage({ params, searchParams }: Props) {

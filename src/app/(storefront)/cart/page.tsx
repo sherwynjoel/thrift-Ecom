@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { CartPanel } from "@/components/storefront/cart-panel";
+import { NO_INDEX } from "@/lib/seo";
 import { getCurrentCart, getCurrentCartPreview } from "@/server/cart-ref";
 
-export const metadata: Metadata = { title: "Your bag" };
+export const metadata: Metadata = { title: "Your bag", robots: NO_INDEX };
 
 export default async function CartPage() {
   const cart = await getCurrentCart();

@@ -153,7 +153,7 @@ describe("custom lines in checkout and orders", () => {
   });
 
   it("keys checkout lines by variant and design", () => {
-    const line = { variantId: "v1", productName: "T", productSlug: "t", imageUrl: null, size: "M", colorName: "Black", unitPricePaise: 54900, quantity: 1, lineTotalPaise: 54900, designId: null, customLabel: null };
+    const line = { variantId: "v1", productId: "p1", productName: "T", productSlug: "t", imageUrl: null, size: "M", colorName: "Black", unitPricePaise: 54900, quantity: 1, lineTotalPaise: 54900, designId: null, customLabel: null };
     expect(checkoutFormKey({ lines: [line, { ...line, designId: "d1" }] })).not.toBe(checkoutFormKey({ lines: [line, { ...line, designId: "d2" }] }));
   });
 });

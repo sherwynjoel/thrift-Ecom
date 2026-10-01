@@ -16,13 +16,14 @@ import { customPrintLabel, isCustomItem, printSidesOf } from "@/lib/custom-prici
 import { formatDateTimeIst, formatTimeIst } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
 import { isPaidStatus, pendingPaymentMode } from "@/lib/order-status";
+import { NO_INDEX } from "@/lib/seo";
 import { isHttpUrl } from "@/lib/url";
 import { auth } from "@/server/auth";
 import { NotFoundError } from "@/server/errors";
 import { orderDiscountLabel } from "@/server/services/order-records";
 import { getOrderForUser, hasFailedPaymentAttempt } from "@/server/services/orders";
 
-export const metadata: Metadata = { title: "Order" };
+export const metadata: Metadata = { title: "Order", robots: NO_INDEX };
 export const dynamic = "force-dynamic";
 
 function paymentFailed(v: string | string[] | undefined): boolean {

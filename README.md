@@ -110,6 +110,7 @@ In production (`NODE_ENV=production`, i.e. `npm run start`) the server **refuses
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | with `razorpay` | Razorpay API and webhook |
 | `CRON_SECRET` | production (≥ 32 characters) | protects `/api/cron/*` |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | seeding, e2e | seeded admin |
+| `NEXT_PUBLIC_GA_ID`, `NEXT_PUBLIC_META_PIXEL_ID` | optional (storefront only; baked in at build time) | GA4 / Meta Pixel ecommerce events |
 
 ## Scripts
 

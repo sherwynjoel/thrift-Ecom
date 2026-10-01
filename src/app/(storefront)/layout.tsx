@@ -1,5 +1,6 @@
 import "lenis/dist/lenis.css";
 import { cookies } from "next/headers";
+import { AnalyticsScripts } from "@/components/analytics/analytics-scripts";
 import { LenisProvider, ReducedMotionConfig } from "@/components/motion";
 import { CartDrawer } from "@/components/storefront/cart-drawer";
 import { CartPanel } from "@/components/storefront/cart-panel";
@@ -32,6 +33,7 @@ export default async function StorefrontLayout({ children }: { children: React.R
           <Header cartCount={cart.itemCount} isLoggedIn={Boolean(userId)} />
           <main className="min-h-[70dvh]">{children}</main>
           <Footer />
+          <AnalyticsScripts />
           <CartDrawer itemCount={cart.itemCount}>
             <CartPanel cart={cart} variant="drawer" preview={preview} />
           </CartDrawer>

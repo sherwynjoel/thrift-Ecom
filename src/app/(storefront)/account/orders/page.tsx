@@ -3,10 +3,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AccountNav } from "@/components/storefront/account/account-nav";
 import { OrderCard } from "@/components/storefront/account/order-card";
+import { NO_INDEX } from "@/lib/seo";
 import { auth } from "@/server/auth";
 import { listOrdersForUser } from "@/server/services/orders";
 
-export const metadata: Metadata = { title: "Orders" };
+export const metadata: Metadata = { title: "Orders", robots: NO_INDEX };
 
 function pageParam(v: string | string[] | undefined): number {
   const n = Number(Array.isArray(v) ? v[0] : v);

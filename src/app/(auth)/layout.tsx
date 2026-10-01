@@ -1,5 +1,9 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { BRAND } from "@/config/brand";
+import { NO_INDEX } from "@/lib/seo";
+
+export const metadata: Metadata = { robots: NO_INDEX };
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (

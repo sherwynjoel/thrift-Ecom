@@ -18,7 +18,7 @@ import { variantImageUrl } from "@/lib/variant-image";
 import { bagLineKey, customFeesOf, customPrintLabel, customUnitPricePaise, designSides, type CustomFees } from "@/lib/custom-pricing";
 
 export interface CheckoutLineView {
-  variantId: string; productName: string; productSlug: string; imageUrl: string | null; size: string; colorName: string;
+  variantId: string; productId: string; productName: string; productSlug: string; imageUrl: string | null; size: string; colorName: string;
   unitPricePaise: number; quantity: number; lineTotalPaise: number;
   /** Custom-print lines: the design and its label ("Custom print: front + back"); null for plain lines. */
   designId: string | null; customLabel: string | null;
@@ -35,7 +35,7 @@ function toLineView(l: CheckoutLineRow, fees: CustomFees): CheckoutLineView {
   const unit = unitPriceOf(l, fees);
   const preview = designFileUrl(l.design?.frontPreviewKey ?? l.design?.backPreviewKey ?? null);
   return {
-    variantId: l.variantId, productName: p.name, productSlug: p.slug, imageUrl: preview ?? variantImageUrl(p.images, l.variant.colorName), size: l.variant.size,
+    variantId: l.variantId, productId: p.id, productName: p.name, productSlug: p.slug, imageUrl: preview ?? variantImageUrl(p.images, l.variant.colorName), size: l.variant.size,
     colorName: l.variant.colorName, unitPricePaise: unit, quantity: l.quantity, lineTotalPaise: unit * l.quantity,
     designId: l.designId, customLabel: l.design ? customPrintLabel(designSides(l.design)) : null,
   };

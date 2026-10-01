@@ -8,7 +8,11 @@ import { Button } from "@/components/ui/button";
 import { formatPaise } from "@/lib/money";
 import { listStudioProducts } from "@/server/services/designs";
 
-export const metadata: Metadata = { title: "Design your own" };
+export const metadata: Metadata = {
+  title: "Design your own tee",
+  description: "Upload artwork or type a line, place it on the front or back, and we print it for you.",
+  alternates: { canonical: "/customize" },
+};
 
 const STEPS = [
   { n: "01", title: "Pick a blank", body: "Oversized or regular, any color we stock." },

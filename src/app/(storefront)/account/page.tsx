@@ -7,11 +7,12 @@ import { PasswordForm } from "@/components/storefront/account/password-form";
 import { ProfileForm } from "@/components/storefront/account/profile-form";
 import { SignOutButton } from "@/components/storefront/account/sign-out-button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { NO_INDEX } from "@/lib/seo";
 import { auth } from "@/server/auth";
 import { getUserById, userHasPassword } from "@/server/services/auth";
 import { listOrdersForUser } from "@/server/services/orders";
 
-export const metadata: Metadata = { title: "Account" };
+export const metadata: Metadata = { title: "Account", robots: NO_INDEX };
 
 export default async function AccountPage() {
   const session = await auth();
