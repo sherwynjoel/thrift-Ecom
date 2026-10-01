@@ -4,11 +4,11 @@ import { buildCsp, SECURITY_HEADER_SOURCE, securityHeaders } from "@/lib/securit
 const directive = (csp: string, name: string) => csp.split("; ").find((d) => d.startsWith(`${name} `)) ?? "";
 
 describe("security headers", () => {
-  it("allows Razorpay checkout and the analytics hosts", () => {
+  it("allows Razorpay checkout (its script host, and a wildcard for the hosts it rotates for telemetry/iframes) and the analytics hosts", () => {
     const csp = buildCsp({ dev: false, https: true });
     expect(directive(csp, "script-src")).toContain("https://checkout.razorpay.com");
-    expect(directive(csp, "frame-src")).toContain("https://api.razorpay.com");
-    expect(directive(csp, "connect-src")).toContain("https://lumberjack.razorpay.com");
+    expect(directive(csp, "frame-src")).toContain("https://*.razorpay.com");
+    expect(directive(csp, "connect-src")).toContain("https://*.razorpay.com");
     expect(directive(csp, "connect-src")).toContain("https://*.google-analytics.com");
     expect(directive(csp, "script-src")).toContain("https://connect.facebook.net");
     expect(directive(csp, "form-action")).toBe("form-action 'self' https://api.razorpay.com");
@@ -25,10 +25,16 @@ describe("security headers", () => {
     expect(directive(dev, "connect-src")).toContain("ws:");
   });
 
-  it("adds the S3 origin to connect-src when configured", () => {
-    expect(directive(buildCsp({ dev: false, https: true, s3PublicBaseUrl: "https://bucket.s3.ap-south-1.amazonaws.com/uploads" }), "connect-src"))
-      .toContain("https://bucket.s3.ap-south-1.amazonaws.com");
+  it("adds the S3 origin to img-src (not connect-src) when configured", () => {
+    const csp = buildCsp({ dev: false, https: true, s3PublicBaseUrl: "https://bucket.s3.ap-south-1.amazonaws.com/uploads" });
+    expect(directive(csp, "img-src")).toContain("https://bucket.s3.ap-south-1.amazonaws.com");
+    expect(directive(csp, "connect-src")).not.toContain("https://bucket.s3.ap-south-1.amazonaws.com");
     expect(buildCsp({ dev: false, https: true, s3PublicBaseUrl: "not a url" })).not.toContain("not a url");
+  });
+
+  it("allows a plain-http S3/MinIO origin in img-src for local dev", () => {
+    const csp = buildCsp({ dev: true, https: false, s3PublicBaseUrl: "http://localhost:9000/thrift-dev" });
+    expect(directive(csp, "img-src")).toContain("http://localhost:9000");
   });
 
   it("sends the standard hardening headers and skips image routes", () => {

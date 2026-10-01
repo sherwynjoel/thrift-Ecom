@@ -57,6 +57,35 @@ describe("withUploadGate", () => {
     }
   });
 
+  it("skips the job if the caller's signal is already aborted by the time its turn comes", async () => {
+    const hold = [deferred(), deferred()];
+    const blocking = hold.map((g) => withUploadGate(() => g.promise.then(() => "done")));
+    const controller = new AbortController();
+    const ran = vi.fn();
+    const queued = withUploadGate(async () => {
+      ran();
+      return "should not run";
+    }, controller.signal);
+
+    controller.abort(); // the client disconnects while still queued, before a slot frees up
+    hold[0].resolve();
+    hold[1].resolve();
+    await Promise.all(blocking);
+
+    await expect(queued).rejects.toThrow(/disconnected/i);
+    expect(ran).not.toHaveBeenCalled();
+
+    // the skipped job's slot must still be released, so a fresh job after it runs immediately
+    const g = deferred();
+    const fresh = withUploadGate(async () => {
+      await g.promise;
+      return "ok";
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    g.resolve();
+    await expect(fresh).resolves.toBe("ok");
+  });
+
   it("releases its slot even when the job throws", async () => {
     await expect(
       withUploadGate(async () => {

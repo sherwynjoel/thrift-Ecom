@@ -23,4 +23,22 @@ describe("GET /api/health", () => {
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ status: "error", db: "down", version: "dev" });
   });
+
+  it("logs a repeated down state only on the transition into it, not on every probe", async () => {
+    // Force a known "up" baseline instead of relying on the real (possibly contended) test
+    // database, so this assertion is about the log-on-change logic, not actual DB health.
+    vi.spyOn(db, "$queryRaw").mockResolvedValueOnce([{ "?column?": 1 }]);
+    await GET();
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(db, "$queryRaw").mockRejectedValue(new Error("connection refused"));
+    await GET();
+    await GET();
+    expect(errSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("coalesces checks that overlap into a single database query", async () => {
+    const querySpy = vi.spyOn(db, "$queryRaw");
+    await Promise.all([GET(), GET(), GET()]);
+    expect(querySpy).toHaveBeenCalledTimes(1);
+  });
 });

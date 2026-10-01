@@ -11,14 +11,19 @@ let active = 0;
 const queue: (() => void)[] = [];
 
 /**
- * Bounds how many design uploads (Fabric canvas exports, up to 90 MB each) are decoded and
- * stored at once, so a burst of uploads can't exhaust memory on a small instance. Runs `fn` once
- * a slot is free; a request still queued after 30s is rejected with a 503 + Retry-After so the
- * client can retry instead of the connection hanging indefinitely.
+ * Bounds how many design uploads (Fabric canvas exports, up to 90 MB each) are read, decoded and
+ * stored at once, so a burst of uploads can't exhaust memory on a small instance. `fn` must do the
+ * whole thing including reading the request body — call this BEFORE buffering the body, not just
+ * around the decode/store step, or a queued request still holds its ~90 MB body in memory while it
+ * waits. Runs `fn` once a slot is free; a request still queued after 30s is rejected with a 503 +
+ * Retry-After so the client can retry instead of the connection hanging indefinitely. If `signal`
+ * is given and has already aborted by the time a slot frees up, `fn` is skipped entirely (the
+ * client is gone, so there is nothing to answer).
  */
-export async function withUploadGate<T>(fn: () => Promise<T>): Promise<T> {
+export async function withUploadGate<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
   await acquire();
   try {
+    if (signal?.aborted) throw new Error("Upload gate: client disconnected before its turn");
     return await fn();
   } finally {
     release();

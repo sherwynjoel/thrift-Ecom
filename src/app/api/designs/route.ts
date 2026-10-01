@@ -18,12 +18,13 @@ const DESIGN_FORM_ENTRIES = 12;
 export const POST = handle(async (req) => {
   const rl = rateLimit(`designs:${clientIp(req)}`, 20, 10 * 60_000);
   if (!rl.ok) throw new RateLimitedError(rl.retryAfterSec);
-  const form = await readLimitedForm(req, DESIGN_BODY_LIMIT, DESIGN_FORM_ENTRIES, "This design is too large to upload. Try smaller images.");
   const { ref, newGuestToken } = await resolveApiCartRef(req);
-  // Decoding/storing the images is the expensive part; gate that, not the cheap request setup above.
+  // The body read is the big memory cost (up to ~90 MB of FormData), so it happens inside the
+  // gate: a queued request holds no body in memory while it waits for a slot.
   const result = await withUploadGate(async () => {
+    const form = await readLimitedForm(req, DESIGN_BODY_LIMIT, DESIGN_FORM_ENTRIES, "This design is too large to upload. Try smaller images.");
     const input = await parseDesignForm(form);
     return createDesignAndAddToCart(ref, input);
-  });
+  }, req.signal);
   return withGuestCookie(ok(result, { status: 201 }), newGuestToken);
 });
