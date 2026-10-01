@@ -8,7 +8,7 @@ import { productInputSchema, type ProductInput } from "@/lib/validation/admin";
 import { slugify, uniqueSlug } from "@/lib/slug";
 import type { Page } from "@/server/services/catalog";
 
-export interface AdminProductRow { id: string; slug: string; name: string; status: ProductStatus; imageUrl: string | null; variantCount: number; totalStock: number; basePricePaise: number; updatedAt: Date }
+export interface AdminProductRow { id: string; slug: string; name: string; status: ProductStatus; imageUrl: string | null; variantCount: number; totalStock: number; basePricePaise: number; updatedAt: Date; wishlistCount: number }
 export interface AdminVariant { id: string; sku: string; size: string; colorName: string; colorHex: string; pricePaise: number | null; stock: number; inCarts: number }
 export interface AdminImage { id: string; url: string; alt: string; colorName: string | null; sortOrder: number }
 export interface AdminProductDetail {
@@ -232,14 +232,14 @@ export async function listAdminProducts(args: { q?: string; status?: ProductStat
       orderBy: { updatedAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
-      include: { images: { orderBy: { sortOrder: "asc" }, take: 1 }, variants: { select: { stock: true } } },
+      include: { images: { orderBy: { sortOrder: "asc" }, take: 1 }, variants: { select: { stock: true } }, _count: { select: { wishlistItems: true } } },
     }),
   ]);
   return {
     items: rows.map((p) => ({
       id: p.id, slug: p.slug, name: p.name, status: p.status, imageUrl: p.images[0]?.url ?? null,
       variantCount: p.variants.length, totalStock: p.variants.reduce((s, v) => s + v.stock, 0),
-      basePricePaise: p.basePricePaise, updatedAt: p.updatedAt,
+      basePricePaise: p.basePricePaise, updatedAt: p.updatedAt, wishlistCount: p._count.wishlistItems,
     })),
     total, page, pageSize, hasMore: page * pageSize < total,
   };

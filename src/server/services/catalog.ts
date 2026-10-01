@@ -268,6 +268,14 @@ export async function getFacets(collectionSlug?: string): Promise<Facets> {
   };
 }
 
+/** Active products as cards, in the order of `ids`; unknown or unpublished ids are skipped. */
+export async function getProductCardsByIds(ids: string[]): Promise<ProductCard[]> {
+  if (ids.length === 0) return [];
+  const rows = await db.product.findMany({ where: { id: { in: ids }, status: "ACTIVE" }, include: cardInclude });
+  const byId = new Map(rows.map((r) => [r.id, toCard(r)]));
+  return ids.flatMap((id) => byId.get(id) ?? []);
+}
+
 export async function searchProducts(q: string, page = 1, pageSize = DEFAULT_PAGE_SIZE): Promise<Page<ProductCard>> {
   const term = q.trim();
   if (!term) return { items: [], total: 0, page, pageSize, hasMore: false };

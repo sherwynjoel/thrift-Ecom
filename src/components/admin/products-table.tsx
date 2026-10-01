@@ -1,3 +1,4 @@
+import { Heart } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { formatPaise } from "@/lib/money";
@@ -10,7 +11,7 @@ export function ProductsTable({ rows }: { rows: AdminProductRow[] }) {
     <div className="overflow-x-auto rounded-md border border-border">
       <table className="w-full min-w-[720px] text-sm" data-testid="products-table">
         <thead className="bg-surface text-left text-text-muted">
-          <tr><th className="p-3">Product</th><th>Status</th><th className="text-right">Variants</th><th className="text-right">Stock</th><th className="text-right">Price</th><th className="p-3 text-right">Updated</th></tr>
+          <tr><th className="p-3">Product</th><th>Status</th><th className="text-right">Variants</th><th className="text-right">Stock</th><th className="text-right">Price</th><th className="text-right"><Heart className="inline size-4" aria-hidden /> <span>Saves</span></th><th className="p-3 text-right">Updated</th></tr>
         </thead>
         <tbody>
           {rows.map((p) => (
@@ -27,6 +28,7 @@ export function ProductsTable({ rows }: { rows: AdminProductRow[] }) {
               <td className="text-right">{p.variantCount}</td>
               <td className={p.totalStock === 0 ? "text-right text-danger" : "text-right"}>{p.totalStock}</td>
               <td className="text-right">{formatPaise(p.basePricePaise)}</td>
+              <td className="text-right">{p.wishlistCount}</td>
               <td className="p-3 text-right text-text-muted">{p.updatedAt.toLocaleDateString("en-IN")}</td>
             </tr>
           ))}

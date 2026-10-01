@@ -17,6 +17,7 @@ import { useCartUI } from "./cart-ui";
 import { Gallery } from "./gallery";
 import { Price } from "./price";
 import { SizeGuide } from "./size-guide";
+import { WishlistButton } from "./wishlist-button";
 
 const FIT_LABEL: Record<ProductDetail["fit"], string> = { OVERSIZED: "Oversized fit", REGULAR: "Regular fit", RELAXED: "Relaxed fit" };
 
@@ -104,6 +105,7 @@ export function ProductPurchase({ product }: { product: ProductDetail }) {
           <Button size="lg" onClick={submit} disabled={pending || product.soldOut} className="flex-1 font-display text-lg tracking-wide" data-testid="add-to-cart">
             {product.soldOut ? "Sold out" : pending ? "Adding…" : "Add to bag"}
           </Button>
+          <WishlistButton productId={product.id} productName={product.name} className="shrink-0 border border-border" />
         </div>
 
         {product.isCustomizable && (
