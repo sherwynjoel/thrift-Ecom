@@ -159,8 +159,8 @@ export default function DitheredFooter({
         >
             <style>{STYLES}</style>
 
-            <div className="mx-auto grid max-w-6xl grid-cols-2 gap-x-6 gap-y-12 px-6 pb-16 pt-16 sm:gap-x-10 sm:px-8 md:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
-                <div className="col-span-2 md:col-span-1">
+            <div className="mx-auto grid max-w-6xl grid-cols-3 gap-x-4 gap-y-12 px-6 pb-16 pt-16 sm:gap-x-10 sm:px-8 md:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
+                <div className="col-span-3 md:col-span-1">
                     <a href={brandHref} aria-label={`${brand} home`} className={`inline-flex rounded-sm text-base font-semibold tracking-tight ${focus}`}>{brandMark ?? brand}</a>
                     <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">{tagline}</p>
 
