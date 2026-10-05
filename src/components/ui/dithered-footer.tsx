@@ -160,11 +160,11 @@ export default function DitheredFooter({
             <style>{STYLES}</style>
 
             <div className="mx-auto grid max-w-6xl grid-cols-3 gap-x-4 gap-y-12 px-6 pb-16 pt-16 sm:gap-x-10 sm:px-8 md:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
-                <div className="col-span-3 md:col-span-1">
+                <div className="col-span-3 text-center md:col-span-1 md:text-left">
                     <a href={brandHref} aria-label={`${brand} home`} className={`inline-flex rounded-sm text-base font-semibold tracking-tight ${focus}`}>{brandMark ?? brand}</a>
-                    <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">{tagline}</p>
+                    <p className="mx-auto mt-3 max-w-xs text-sm md:mx-0 leading-relaxed text-muted-foreground">{tagline}</p>
 
-                    <form className="mt-8 max-w-sm" onSubmit={submit}>
+                    <form className="mx-auto mt-8 max-w-sm md:mx-0" onSubmit={submit}>
                         {/* A visible label, not a placeholder: placeholders vanish while you type. */}
                         <label htmlFor="df-email" className="block text-sm font-medium">{subscribeLabel}</label>
                         <div className="mt-2 flex gap-2">
@@ -192,7 +192,7 @@ export default function DitheredFooter({
                 </div>
 
                 {columns.map((col) => (
-                    <nav key={col.title} aria-label={col.title}>
+                    <nav key={col.title} aria-label={col.title} className="text-center md:text-left">
                         <p className="text-sm font-medium text-foreground">{col.title}</p>
                         <ul className="mt-4 space-y-3 [@media(pointer:coarse)]:space-y-0">
                             {col.links.map((l) => (
@@ -212,14 +212,14 @@ export default function DitheredFooter({
                     {/* One tile wider than the band, slid left by exactly one tile, so the loop is seamless. */}
                     <div className="df-dots" />
                 </div>
-                <p className="df-mark pointer-events-none absolute -bottom-[0.05em] left-3 select-none text-[clamp(5rem,21vw,13rem)] font-bold leading-[0.8] tracking-[-0.06em] text-background sm:left-5">
+                <p className="df-mark pointer-events-none absolute inset-x-0 -bottom-[0.05em] select-none text-center md:inset-x-auto md:left-5 md:text-left text-[clamp(5rem,21vw,13rem)] font-bold leading-[0.8] tracking-[-0.06em] text-background">
                     {brand}
                 </p>
             </div>
 
             <div className="border-t border-border">
-                <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-5 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-8">
-                    <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-6 py-5 text-center text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-8">
+                    <div className="flex flex-col flex-wrap items-center gap-x-5 gap-y-2 sm:flex-row">
                         <p>{copyright}</p>
                         {legal.map((l) => (
                             <a key={l.label} href={l.href} className={`rounded-sm transition-colors hover:text-foreground ${focus} ${coarse}`}>{l.label}</a>
@@ -232,7 +232,7 @@ export default function DitheredFooter({
                         )}
                         {extra}
                     </div>
-                    <div className="-mr-2 flex items-center gap-1">
+                    <div className="flex items-center justify-center gap-1 sm:-mr-2">
                         {socials.map((s) => (
                             <a
                                 key={s.label}
