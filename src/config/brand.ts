@@ -1,5 +1,5 @@
 export const BRAND = {
-  name: "YOUR BRAND",
+  name: "tbox",
   tagline: "Wear what you mean.",
   supportEmail: "support@example.com",
   freeShippingThresholdPaise: 99900,

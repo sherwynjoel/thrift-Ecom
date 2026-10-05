@@ -33,3 +33,4 @@ coverage/
 deploy/.current-version
 deploy/.previous-version
 .audit/
+.next-local/
