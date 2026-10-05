@@ -17,12 +17,14 @@ export function productionConfigProblems(env: Env): string[] {
 
   if (!set(env.AUTH_SECRET)) problems.push("AUTH_SECRET is not set.");
 
+  // "disabled" lets the store run before Razorpay keys exist (checkout shows "payment opens soon"); mock is never allowed.
   const provider = (env.PAYMENT_PROVIDER ?? "").trim().toLowerCase();
-  if (provider !== "razorpay") {
-    problems.push(`PAYMENT_PROVIDER must be "razorpay" in production (it is ${provider ? `"${provider}"` : "unset, which means mock"}).`);
-  }
-  for (const k of ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET"] as const) {
-    if (!set(env[k])) problems.push(`${k} is not set.`);
+  if (provider === "razorpay") {
+    for (const k of ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET"] as const) {
+      if (!set(env[k])) problems.push(`${k} is not set.`);
+    }
+  } else if (provider !== "disabled") {
+    problems.push(`PAYMENT_PROVIDER must be "razorpay" (or "disabled" before keys exist) in production (it is ${provider ? `"${provider}"` : "unset, which means mock"}).`);
   }
 
   if ((env.CRON_SECRET ?? "").trim().length < MIN_CRON_SECRET_LENGTH) {
@@ -36,8 +38,8 @@ export function productionConfigProblems(env: Env): string[] {
   } else if (driver === "ses") {
     if (!set(env.AWS_REGION)) problems.push("AWS_REGION is not set (EMAIL_DRIVER=ses).");
     if (!set(env.EMAIL_FROM)) problems.push("EMAIL_FROM is not set.");
-  } else {
-    problems.push(`EMAIL_DRIVER must be "smtp" or "ses" in production (it is ${driver ? `"${driver}"` : "unset, which prints emails to the log"}).`);
+  } else if (driver !== "disabled") {
+    problems.push(`EMAIL_DRIVER must be "smtp" or "ses" (or "disabled" before a sender exists) in production (it is ${driver ? `"${driver}"` : "unset, which prints emails to the log"}).`);
   }
 
   const site = (env.NEXT_PUBLIC_SITE_URL ?? "").trim();

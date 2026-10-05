@@ -144,3 +144,22 @@ describe("getPaymentProvider", () => {
     expect(() => getPaymentProvider()).toThrow(/Unknown PAYMENT_PROVIDER/);
   });
 });
+
+describe("DisabledProvider (PAYMENT_PROVIDER=disabled)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetPaymentProviderCache();
+  });
+
+  it("is allowed in production, never starts a payment and never verifies one", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("PAYMENT_PROVIDER", "disabled");
+    resetPaymentProviderCache();
+    const provider = getPaymentProvider();
+    expect(provider.name).toBe("disabled");
+    await expect(provider.createOrder({ amountPaise: 49900, receipt: "ORD-1" })).rejects.toBeInstanceOf(PaymentError);
+    expect(provider.verifyPaymentSignature({ providerOrderId: "o", paymentId: "p", signature: "s" })).toBe(false);
+    expect(provider.verifyWebhookSignature("{}", "sig")).toBe(false);
+    expect(isMockPayments()).toBe(false);
+  });
+});

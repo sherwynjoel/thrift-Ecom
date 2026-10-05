@@ -28,17 +28,22 @@ preflight() {
   if [ -z "$DOMAIN" ] || [ "$DOMAIN" = "shop.example.com" ]; then die "set DOMAIN in $ENV_FILE"; fi
   need ACME_EMAIL
   need AUTH_SECRET "openssl rand -base64 32"
-  [ "$(env_value PAYMENT_PROVIDER)" = "razorpay" ] || die "PAYMENT_PROVIDER must be razorpay in $ENV_FILE"
-  need RAZORPAY_KEY_ID "Razorpay dashboard → API Keys; Test mode keys are fine to start"
-  need RAZORPAY_KEY_SECRET "Razorpay dashboard → API Keys"
-  need RAZORPAY_WEBHOOK_SECRET "openssl rand -hex 32, also pasted into the Razorpay webhook"
+  case "$(env_value PAYMENT_PROVIDER)" in
+    razorpay)
+      need RAZORPAY_KEY_ID "Razorpay dashboard → API Keys; Test mode keys are fine to start"
+      need RAZORPAY_KEY_SECRET "Razorpay dashboard → API Keys"
+      need RAZORPAY_WEBHOOK_SECRET "openssl rand -hex 32, also pasted into the Razorpay webhook" ;;
+    disabled) log "PAYMENT_PROVIDER=disabled: checkout shows 'payments open soon' until Razorpay keys are added" ;;
+    *) die "PAYMENT_PROVIDER must be razorpay (or disabled before keys exist) in $ENV_FILE" ;;
+  esac
   local cron_secret
   cron_secret="$(env_value CRON_SECRET)"
   [ "${#cron_secret}" -ge 32 ] || die "CRON_SECRET must be at least 32 characters (openssl rand -hex 32)"
   case "$(env_value EMAIL_DRIVER)" in
     smtp) need SMTP_URL "EMAIL_DRIVER=smtp" ;;
     ses) need AWS_REGION "EMAIL_DRIVER=ses" ;;
-    *) die "EMAIL_DRIVER must be smtp or ses in $ENV_FILE (see docs/deploy/aws-ec2.md → Email)" ;;
+    disabled) log "EMAIL_DRIVER=disabled: no emails are sent until an email sender is configured" ;;
+    *) die "EMAIL_DRIVER must be smtp or ses (or disabled before a sender exists) in $ENV_FILE (see docs/deploy/aws-ec2.md → Email)" ;;
   esac
   need EMAIL_FROM
   if grep -qE '^(ACME_EMAIL|EMAIL_FROM)=.*@example\.com' "$ENV_FILE"; then

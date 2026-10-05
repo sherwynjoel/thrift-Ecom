@@ -22,11 +22,26 @@ describe("productionConfigProblems (I2)", () => {
 
   it("lists every problem of an unconfigured server without echoing values", () => {
     const problems = productionConfigProblems({});
-    expect(problems).toHaveLength(8);
+    expect(problems).toHaveLength(5);
     expect(problems.join("\n")).toMatch(/AUTH_SECRET/);
     expect(problems.join("\n")).toMatch(/PAYMENT_PROVIDER must be "razorpay".*unset, which means mock/);
     expect(problems.join("\n")).toMatch(/EMAIL_DRIVER must be "smtp" or "ses".*unset/);
     expect(productionConfigProblems({ ...GOOD, RAZORPAY_KEY_SECRET: "topsecretvalue", CRON_SECRET: "short" }).join(" ")).not.toContain("topsecretvalue");
+  });
+
+  it("accepts payments and email switched off before keys exist (launch preview), but never mock or console", () => {
+    const preview = {
+      ...GOOD,
+      PAYMENT_PROVIDER: "disabled",
+      RAZORPAY_KEY_ID: undefined,
+      RAZORPAY_KEY_SECRET: undefined,
+      RAZORPAY_WEBHOOK_SECRET: undefined,
+      EMAIL_DRIVER: "disabled",
+      SMTP_URL: undefined,
+    };
+    expect(productionConfigProblems(preview)).toEqual([]);
+    expect(productionConfigProblems({ ...preview, PAYMENT_PROVIDER: "mock" })).toHaveLength(1);
+    expect(productionConfigProblems({ ...preview, EMAIL_DRIVER: "console" })).toHaveLength(1);
   });
 
   it.each([

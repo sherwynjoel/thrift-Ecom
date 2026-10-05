@@ -1,3 +1,4 @@
+import { DisabledProvider } from "./disabled";
 import { MockProvider } from "./mock";
 import { RazorpayProvider } from "./razorpay";
 import type { PaymentProvider, ProviderName } from "./types";
@@ -8,13 +9,17 @@ let cached: PaymentProvider | undefined;
 
 export function paymentProviderName(): ProviderName {
   const v = (process.env.PAYMENT_PROVIDER || "mock").trim().toLowerCase();
-  if (v !== "razorpay" && v !== "mock") throw new Error(`Unknown PAYMENT_PROVIDER "${v}" (use razorpay or mock)`);
+  if (v !== "razorpay" && v !== "mock" && v !== "disabled") throw new Error(`Unknown PAYMENT_PROVIDER "${v}" (use razorpay, disabled or mock)`);
   return v;
 }
 
 export function getPaymentProvider(): PaymentProvider {
   if (cached) return cached;
   const name = paymentProviderName();
+  if (name === "disabled") {
+    cached = new DisabledProvider();
+    return cached;
+  }
   if (name === "mock") {
     if (process.env.NODE_ENV === "production") throw new Error("PAYMENT_PROVIDER=mock is not allowed in production");
     cached = new MockProvider();

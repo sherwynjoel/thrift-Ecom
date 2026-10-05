@@ -1,4 +1,4 @@
-export type ProviderName = "razorpay" | "mock";
+export type ProviderName = "razorpay" | "mock" | "disabled";
 
 export interface ProviderOrder { id: string; amountPaise: number; currency: "INR" }
 /** A refund already recorded by the provider. status: "pending" | "processed" | "failed" (Razorpay's values). */

@@ -1,4 +1,5 @@
 import { ConsoleEmail } from "./console";
+import { DisabledEmail } from "./disabled";
 import { SesEmail } from "./ses";
 import { SmtpEmail } from "./smtp";
 import type { EmailAdapter } from "./types";
@@ -20,6 +21,8 @@ export function getEmail(): EmailAdapter {
     const from = process.env.EMAIL_FROM;
     if (!url || !from) throw new Error("SMTP_URL and EMAIL_FROM are required when EMAIL_DRIVER=smtp");
     cached = new SmtpEmail(url, from);
+  } else if (process.env.EMAIL_DRIVER?.trim() === "disabled") {
+    cached = new DisabledEmail();
   } else {
     cached = new ConsoleEmail();
   }

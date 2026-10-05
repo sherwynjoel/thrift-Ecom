@@ -45,6 +45,7 @@ function DiscountNotice({ price, appliedCode }: { price: PriceResult; appliedCod
 }
 
 export function CheckoutForm({ view, provider }: { view: CheckoutView; provider: ProviderName }) {
+  const paymentsOff = provider === "disabled";
   const router = useRouter();
   const [addresses, setAddresses] = useState<AddressView[]>(view.addresses);
   const [selectedId, setSelectedId] = useState<string | null>(() => initialAddressId(view.addresses));
@@ -371,16 +372,20 @@ export function CheckoutForm({ view, provider }: { view: CheckoutView; provider:
               data-testid="pay-button"
               size="lg"
               className="h-12 min-w-0 flex-1 font-display text-lg tracking-wide"
-              disabled={pending || !selectedId || adding}
+              disabled={paymentsOff || pending || !selectedId || adding}
               aria-describedby={payHint ? "pay-hint" : undefined}
               onClick={pay}
             >
-              {paying ? "Starting payment…" : `Pay ${formatPaise(price.totalPaise)}`}
+              {paymentsOff ? "Payments open soon" : paying ? "Starting payment…" : `Pay ${formatPaise(price.totalPaise)}`}
             </Button>
           </div>
           {payHint && <p id="pay-hint" className="mt-1 text-center text-xs text-danger">{payHint}</p>}
-          <p className="mt-1 text-center text-xs text-text-muted">
-            {provider === "mock" ? "Test mode: no real money moves." : "Secure payment by Razorpay: UPI, cards, netbanking, wallets."}
+          <p className="mt-1 text-center text-xs text-text-muted" data-testid="pay-note">
+            {paymentsOff
+              ? "We're switching on online payment very soon. Your bag stays saved."
+              : provider === "mock"
+                ? "Test mode: no real money moves."
+                : "Secure payment by Razorpay: UPI, cards, netbanking, wallets."}
           </p>
         </div>
       </aside>
