@@ -10,6 +10,9 @@ set -o pipefail
 
 DIR=/backups
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
+# Each uploads archive is a full copy (design print files run to ~90 MB each), so keep only the newest few on this
+# disk; DB dumps are small and keep the full retention. Set BACKUP_S3_BUCKET for older uploads history.
+UPLOADS_KEEP="${BACKUP_UPLOADS_KEEP:-3}"
 mkdir -p "$DIR"
 
 log() { echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') [backup] $*"; }
@@ -38,7 +41,12 @@ backup_once() {
   fi
   if [ -d /uploads ]; then
     up_tmp="$DIR/.uploads-$ts.partial"
-    if tar -czf "$up_tmp" -C /uploads .; then
+    need_kb="$(du -sk /uploads | cut -f1)"
+    free_kb="$(df -Pk "$DIR" | awk 'NR==2 {print $4}')"
+    # Leave at least 1 GB after the archive so a full disk never stops Postgres from writing.
+    if [ "$free_kb" -lt $((need_kb + 1048576)) ]; then
+      log "WARNING: skipped uploads archive, only $((free_kb / 1024)) MB free for $((need_kb / 1024)) MB of uploads"
+    elif tar -czf "$up_tmp" -C /uploads .; then
       mv "$up_tmp" "$DIR/uploads-$ts.tar.gz"
       log "uploads -> uploads-$ts.tar.gz"
       s3_copy "$DIR/uploads-$ts.tar.gz"
@@ -48,6 +56,10 @@ backup_once() {
     fi
   fi
   find "$DIR" -maxdepth 1 -type f \( -name 'db-*.sql.gz' -o -name 'uploads-*.tar.gz' \) -mtime +"$((RETENTION_DAYS - 1))" -print -delete
+  # Names carry a sortable UTC timestamp: newest first, drop everything past UPLOADS_KEEP.
+  find "$DIR" -maxdepth 1 -type f -name 'uploads-*.tar.gz' | sort -r | tail -n +"$((UPLOADS_KEEP + 1))" | while read -r old; do
+    rm -f "$old" && log "pruned $(basename "$old")"
+  done
 }
 
 case "${1:-loop}" in

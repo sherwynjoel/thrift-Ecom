@@ -1,9 +1,11 @@
 import { Prisma, type OrderStatus } from "@prisma/client";
 import { z } from "zod";
+import { clampPage } from "@/lib/pagination";
 import { db } from "@/server/db";
 import { zodFieldErrors } from "@/server/action-result";
 import { ConflictError, NotFoundError, PaymentError, StockChangedError, ValidationError, type StockIssue } from "@/server/errors";
-import { getPaymentProvider, type PaymentProvider, type ProviderName } from "@/server/payments";
+import { getPaymentProvider, paymentProviderName, type PaymentProvider, type ProviderName } from "@/server/payments";
+import { PAYMENTS_DISABLED_MESSAGE } from "@/server/payments/disabled";
 import { quote } from "@/server/services/promotions";
 import { addOrderEvent, flagAttentionOnce, orderWithItems, toCustomerOrderView, toOrderSummary, toOrderView, type CustomerOrderView, type OrderSummary, type Tx } from "@/server/services/order-records";
 import { notifyOrder } from "@/server/services/notifications";
@@ -302,6 +304,8 @@ export async function placeOrder(userId: string, input: unknown): Promise<Checko
   const parsed = placeOrderSchema.safeParse(input);
   if (!parsed.success) throw new ValidationError(zodFieldErrors(parsed.error));
   const { addressId, couponCode, customerNote } = parsed.data;
+  // Refuse up front while payments are off: otherwise stock is reserved and a cancelled order is left behind.
+  if (paymentProviderName() === "disabled") throw new PaymentError(PAYMENTS_DISABLED_MESSAGE);
 
   await expireStaleOrders().catch((err) => console.error("[orders] opportunistic expiry failed", err));
 
@@ -722,7 +726,7 @@ export async function hasFailedPaymentAttempt(orderId: string): Promise<boolean>
 
 export async function listOrdersForUser(userId: string, opts: { page?: number; pageSize?: number } = {}): Promise<Page<OrderSummary>> {
   const pageSize = Math.min(Math.max(opts.pageSize ?? 10, 1), 50);
-  const page = Math.max(opts.page ?? 1, 1);
+  const page = clampPage(opts.page ?? 1);
   const where = { userId };
   const [total, rows] = await Promise.all([
     db.order.count({ where }),

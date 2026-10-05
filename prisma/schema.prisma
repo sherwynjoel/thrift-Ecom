@@ -496,3 +496,14 @@ model Review {
   @@index([productId, status, createdAt])
   @@index([status, createdAt])
 }
+
+/// Emails left in the footer newsletter form or the studio's "notify me" form. One row per email and source.
+model Subscriber {
+  id        String   @id @default(cuid())
+  email     String
+  source    String
+  createdAt DateTime @default(now())
+
+  @@unique([email, source])
+  @@index([createdAt])
+}

@@ -26,7 +26,7 @@ const ALIGN_OPTIONS = [
   { id: "right", label: "Align right", Icon: AlignRight },
 ] as const;
 
-const selectClass = "h-11 w-full rounded-lg border border-input bg-surface px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+const selectClass = "h-11 w-full rounded-lg border border-input bg-surface px-3 text-base outline-none md:text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 const toggleClass = (on: boolean) =>
   cn(
     "inline-flex size-11 items-center justify-center rounded-md border motion-safe:transition-colors",

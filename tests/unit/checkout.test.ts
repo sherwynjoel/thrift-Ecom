@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/server/db";
 import { resetDb } from "../helpers/db";
 import { createProduct, createUser } from "../helpers/fixtures";
@@ -186,5 +186,24 @@ describe("checkout form key (review I1, N1)", () => {
 
   it("changes when the bag lines themselves change", () => {
     expect(checkoutFormKey({ lines })).not.toBe(checkoutFormKey({ lines: [{ ...lines[0], quantity: 1 }] }));
+  });
+});
+
+describe("placeOrder while payments are switched off", () => {
+  beforeEach(resetDb);
+
+  it("refuses before reserving stock or creating an order", async () => {
+    vi.stubEnv("PAYMENT_PROVIDER", "disabled");
+    try {
+      const user = await createUser();
+      const p = await createProduct({ variants: [{ size: "M", colorName: "Black", stock: 3 }] });
+      const address = await createAddress(user.id, { fullName: "Asha Rao", phone: "9876543210", line1: "12 MG Road", city: "Bengaluru", state: "Karnataka", pincode: "560001" });
+      await addItem({ userId: user.id }, p.variants[0].id, 1);
+      await expect(placeOrder(user.id, { addressId: address.id })).rejects.toThrow(/payment opens/i);
+      expect(await db.order.count()).toBe(0);
+      expect((await db.productVariant.findUniqueOrThrow({ where: { id: p.variants[0].id } })).stock).toBe(3);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

@@ -5,6 +5,8 @@ import { db } from "@/server/db";
 import { authConfig } from "@/server/auth.config";
 import { verifyCredentials } from "@/server/services/auth";
 import { loginSchema } from "@/lib/validation/auth";
+import { rateLimit } from "@/server/rate-limit";
+import { requestIp } from "@/server/request-ip";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -14,6 +16,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Credentials({
       credentials: { email: {}, password: {} },
       async authorize(raw) {
+        // Auth.js also serves POST /api/auth/callback/credentials directly, past loginAction's limit; cap guesses
+        // (and their bcrypt cost) for every path here.
+        if (!rateLimit(`credentials:${await requestIp()}`, 30, 60_000).ok) return null;
         const parsed = loginSchema.safeParse(raw);
         if (!parsed.success) return null;
         const user = await verifyCredentials(parsed.data.email, parsed.data.password);

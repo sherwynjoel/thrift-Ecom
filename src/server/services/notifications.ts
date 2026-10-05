@@ -1,5 +1,5 @@
 import { db } from "@/server/db";
-import { getEmail, type EmailMessage } from "@/server/adapters/email";
+import { EmailDisabledError, emailDisabled, getEmail, type EmailMessage } from "@/server/adapters/email";
 import {
   adminNewOrderEmail, orderCancelledEmail, orderConfirmationEmail, orderDeliveredEmail, orderRefundedEmail, orderShippedEmail, type RenderedEmail,
 } from "@/server/emails/templates";
@@ -22,14 +22,15 @@ export async function sendEmailSafely(msg: EmailMessage): Promise<boolean> {
     await getEmail().send(msg);
     return true;
   } catch (err) {
-    console.error("[email] send failed", msg.to, msg.subject, err);
+    if (!(err instanceof EmailDisabledError)) console.error("[email] send failed", msg.to, msg.subject, err);
     return false;
   }
 }
 
 async function sendAndRecord(orderId: string, to: string, rendered: RenderedEmail, label: string): Promise<void> {
   const ok = await sendEmailSafely({ to, ...rendered });
-  await addOrderEvent(db, orderId, ok ? "EMAIL_SENT" : "EMAIL_FAILED", `${label} email ${ok ? "sent" : "failed"} → ${to}`);
+  const outcome = ok ? "sent" : emailDisabled() ? "not sent (email isn't set up yet)" : "failed";
+  await addOrderEvent(db, orderId, ok ? "EMAIL_SENT" : "EMAIL_FAILED", `${label} email ${outcome} → ${to}`);
 }
 
 export async function notifyOrder(orderId: string, notice: OrderNotice): Promise<void> {

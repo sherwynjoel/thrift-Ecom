@@ -82,7 +82,9 @@ export async function deleteProductImage(imageId: string): Promise<{ productId: 
   const img = await db.productImage.findUnique({ where: { id: imageId } });
   if (!img) throw new NotFoundError("Image");
   await db.productImage.delete({ where: { id: imageId } });
-  const key = uploadKeyFromUrl(img.url);
+  // Past orders show this photo as their line thumbnail; only the gallery entry goes, the file stays for them.
+  const onOrders = (await db.orderItem.count({ where: { imageUrl: img.url } })) > 0;
+  const key = onOrders ? null : uploadKeyFromUrl(img.url);
   if (key) {
     try {
       await getStorage().delete(key);

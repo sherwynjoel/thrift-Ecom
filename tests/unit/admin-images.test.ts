@@ -10,7 +10,7 @@ vi.mock("@/server/adapters/storage", async (orig) => ({ ...(await orig<typeof im
 
 import { db } from "@/server/db";
 import { resetDb } from "../helpers/db";
-import { createProduct } from "../helpers/fixtures";
+import { createOrderRow, createProduct, createUser } from "../helpers/fixtures";
 import { addProductImages, deleteProductImage, reorderProductImages, updateProductImage } from "@/server/services/admin-images";
 import { ValidationError } from "@/server/errors";
 import { existsSync, readdirSync } from "node:fs";
@@ -48,6 +48,18 @@ describe("admin images service", () => {
     await deleteProductImage(a.id);
     expect(existsSync(join(root, a.url.replace("/api/uploads/", "")))).toBe(false);
     expect(await db.productImage.count({ where: { productId: p.id } })).toBe(1);
+  });
+
+  it("keeps the file when a past order still shows it as the line thumbnail", async () => {
+    const p = await createProduct({ images: [] });
+    const [a] = await addProductImages(p.id, [png()]);
+    const order = await createOrderRow((await createUser()).id);
+    await db.orderItem.create({
+      data: { orderId: order.id, productId: p.id, productName: "Tee", productSlug: p.slug, size: "M", colorName: "Black", imageUrl: a.url, sku: "SKU-1", unitPricePaise: 59900, quantity: 1, lineTotalPaise: 59900 },
+    });
+    await deleteProductImage(a.id);
+    expect(await db.productImage.count({ where: { productId: p.id } })).toBe(0);
+    expect(existsSync(join(root, a.url.replace("/api/uploads/", "")))).toBe(true);
   });
 
   it("does not try to delete seed files that the storage adapter did not create", async () => {

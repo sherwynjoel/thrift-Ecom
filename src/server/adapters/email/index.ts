@@ -6,6 +6,9 @@ import type { EmailAdapter } from "./types";
 
 export type { EmailAdapter, EmailMessage } from "./types";
 export { ConsoleEmail } from "./console";
+export { EmailDisabledError } from "./disabled";
+
+export const emailDisabled = () => process.env.EMAIL_DRIVER?.trim() === "disabled";
 
 let cached: EmailAdapter | undefined;
 

@@ -84,6 +84,21 @@ export function Studio({ product, initialColor, initialDesign }: StudioProps) {
   const narrow = useNarrow();
   // Phone with the tool sheet open: the preview is pinned between the header and the sheet, tools flank the stage.
   const focus = expanded && narrow;
+  // Where the sticky header ends right now: lower than its own height while the announcement bar is still on screen.
+  const [headerBottom, setHeaderBottom] = useState(65);
+  useEffect(() => {
+    if (!focus) return;
+    const header = document.querySelector<HTMLElement>("[data-testid='site-header']");
+    if (!header) return;
+    const measure = () => setHeaderBottom(Math.max(0, Math.round(header.getBoundingClientRect().bottom)));
+    measure();
+    window.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, [focus]);
   const hex = colorsOf(product.variants).find((c) => c.name === color)?.hex ?? "#f5f5f5";
   const chosen = useMemo(() => (color ? sizesFor(product.variants, color).find((s) => s.size === size) ?? null : null), [product.variants, color, size]);
   const dark = isDarkHex(hex);
@@ -160,7 +175,7 @@ export function Studio({ product, initialColor, initialDesign }: StudioProps) {
       data-lenis-prevent
       {...{ [STUDIO_ROOT_ATTR]: "" }}
       className="relative grid gap-4 md:grid-cols-[minmax(0,1fr)_380px] md:gap-8"
-      style={{ "--sheet-h": `${sheetHeight}px` } as React.CSSProperties}
+      style={{ "--sheet-h": `${sheetHeight}px`, "--header-bottom": `${headerBottom}px` } as React.CSSProperties}
     >
       {FONT_SAMPLES.map((c) => (
         <span key={c} aria-hidden className={cn(c, "pointer-events-none absolute size-px overflow-hidden opacity-0")}>Aa</span>
@@ -171,7 +186,7 @@ export function Studio({ product, initialColor, initialDesign }: StudioProps) {
         className={cn(
           "min-w-0 space-y-3 sm:mx-auto sm:w-full sm:max-w-[640px] md:max-w-[min(640px,calc((100dvh-16rem)*0.8))]",
           // Mobile with the tools open: pin the preview between the header and the sheet so the shirt stays in view.
-          focus && "max-md:fixed max-md:inset-x-0 max-md:top-[65px] max-md:bottom-[var(--sheet-h)] max-md:z-20 max-md:m-0 max-md:flex max-md:max-w-none max-md:flex-col max-md:gap-2 max-md:space-y-0 max-md:bg-bg max-md:px-4 max-md:pt-2 max-md:pb-1",
+          focus && "max-md:fixed max-md:inset-x-0 max-md:top-[var(--header-bottom)] max-md:bottom-[var(--sheet-h)] max-md:z-20 max-md:m-0 max-md:flex max-md:max-w-none max-md:flex-col max-md:gap-2 max-md:space-y-0 max-md:bg-bg max-md:px-4 max-md:pt-2 max-md:pb-1",
         )}
       >
         {!focus && (

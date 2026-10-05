@@ -1,4 +1,5 @@
 import { Prisma, type Fit } from "@prisma/client";
+import { clampPage } from "@/lib/pagination";
 import { db } from "@/server/db";
 import { NotFoundError } from "@/server/errors";
 import { SIZES } from "@/lib/sizes";
@@ -164,7 +165,7 @@ export async function getCollectionBySlug(slug: string): Promise<CollectionSumma
 export async function listProducts(
   args: { collectionSlug?: string; filters?: ProductFilters; sort?: ProductSort; page?: number; pageSize?: number } = {},
 ): Promise<Page<ProductCard>> {
-  const page = Math.max(1, args.page ?? 1);
+  const page = clampPage(args.page ?? 1);
   const pageSize = Math.min(48, Math.max(1, args.pageSize ?? DEFAULT_PAGE_SIZE));
   const sort = args.sort ?? "featured";
   const where = productWhere(args.collectionSlug, args.filters ?? {});
@@ -276,7 +277,8 @@ export async function getProductCardsByIds(ids: string[]): Promise<ProductCard[]
   return ids.flatMap((id) => byId.get(id) ?? []);
 }
 
-export async function searchProducts(q: string, page = 1, pageSize = DEFAULT_PAGE_SIZE): Promise<Page<ProductCard>> {
+export async function searchProducts(q: string, rawPage: number = 1, pageSize = DEFAULT_PAGE_SIZE): Promise<Page<ProductCard>> {
+  const page = clampPage(rawPage);
   const term = q.trim();
   if (!term) return { items: [], total: 0, page, pageSize, hasMore: false };
   const where: Prisma.ProductWhereInput = {

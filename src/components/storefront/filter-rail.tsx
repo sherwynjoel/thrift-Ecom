@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -28,11 +28,20 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
+const rupees = (paise: string | null) => (paise ? String(Number(paise) / 100) : "");
+
 function Filters({ facets, showClear = true }: { facets: Facets; showClear?: boolean }) {
   const { params, go } = useQueryNav();
   const has = (key: string, v: string) => (params.get(key) ?? "").split(",").includes(v);
-  const [min, setMin] = useState(params.get("minPrice") ? String(Number(params.get("minPrice")) / 100) : "");
-  const [max, setMax] = useState(params.get("maxPrice") ? String(Number(params.get("maxPrice")) / 100) : "");
+  const minParam = params.get("minPrice");
+  const maxParam = params.get("maxPrice");
+  const [min, setMin] = useState(rupees(minParam));
+  const [max, setMax] = useState(rupees(maxParam));
+  // Keep the boxes in step with the URL, so "Clear all" (or back/forward) doesn't leave stale prices to re-apply.
+  useEffect(() => {
+    setMin(rupees(minParam));
+    setMax(rupees(maxParam));
+  }, [minParam, maxParam]);
   const applyPrice = () => {
     let next = setParam(params, "minPrice", min ? String(Math.round(Number(min) * 100)) : null);
     next = setParam(next, "maxPrice", max ? String(Math.round(Number(max) * 100)) : null);
@@ -68,9 +77,9 @@ function Filters({ facets, showClear = true }: { facets: Facets; showClear?: boo
       </Group>
       <Group title="Price">
         <div className="flex items-center gap-2 text-sm">
-          <input type="number" inputMode="numeric" min={0} placeholder={String(Math.floor(facets.minPricePaise / 100))} value={min} onChange={(e) => setMin(e.target.value)} className="h-11 w-20 rounded-sm border border-border bg-surface px-2" aria-label="Minimum price" />
+          <input type="number" inputMode="numeric" min={0} placeholder={String(Math.floor(facets.minPricePaise / 100))} value={min} onChange={(e) => setMin(e.target.value)} className="h-11 w-20 rounded-sm border border-border bg-surface px-2 text-base md:text-sm" aria-label="Minimum price" />
           <span className="text-text-muted">to</span>
-          <input type="number" inputMode="numeric" min={0} placeholder={String(Math.ceil(facets.maxPricePaise / 100))} value={max} onChange={(e) => setMax(e.target.value)} className="h-11 w-20 rounded-sm border border-border bg-surface px-2" aria-label="Maximum price" />
+          <input type="number" inputMode="numeric" min={0} placeholder={String(Math.ceil(facets.maxPricePaise / 100))} value={max} onChange={(e) => setMax(e.target.value)} className="h-11 w-20 rounded-sm border border-border bg-surface px-2 text-base md:text-sm" aria-label="Maximum price" />
           <Button type="button" variant="secondary" onClick={applyPrice} className="h-11 px-4">Go</Button>
         </div>
       </Group>

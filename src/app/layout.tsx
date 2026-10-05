@@ -25,7 +25,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-dvh">
         <Splash />
         {children}
-        <Toaster theme="dark" position="bottom-center" />
+        {/* Phones: lift toasts clear of the fixed bottom bars (product Add to bag, checkout Pay, studio Add to cart). */}
+        <Toaster theme="dark" position="bottom-center" mobileOffset={{ bottom: "calc(env(safe-area-inset-bottom) + 128px)" }} />
       </body>
     </html>
   );

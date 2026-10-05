@@ -13,6 +13,7 @@ export function ForgotForm() {
   return (
     <form action={action} className="space-y-4">
       <div><Label htmlFor="email">Email</Label><Input id="email" name="email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" required className="mt-1 bg-bg" /><FieldError errors={state.fieldErrors?.email} /></div>
+      {state.error && <p className="text-sm text-danger" role="alert" data-testid="form-error">{state.error}</p>}
       <Button type="submit" disabled={pending} className="w-full">{pending ? "Sending…" : "Send reset link"}</Button>
     </form>
   );

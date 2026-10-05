@@ -4,6 +4,7 @@ import { Logo } from "@/components/brand/logo";
 import DitheredFooter, { type FooterColumn, type FooterSocial } from "@/components/ui/dithered-footer";
 import { BRAND } from "@/config/brand";
 import { FOOTER_LINKS } from "@/config/site";
+import { subscribeAction } from "@/app/(storefront)/subscribe-action";
 
 const COLUMNS: FooterColumn[] = [
   { title: "Shop", links: [...FOOTER_LINKS.shop] },
@@ -32,6 +33,9 @@ const SOCIALS: FooterSocial[] = [
   { label: "YouTube", href: BRAND.social.youtube, icon: brandIcon(YOUTUBE) },
 ].filter((s) => isProfile(s.href));
 
+// Pinned to IST so the server (UTC) and a shopper's phone render the same year around New Year (no hydration mismatch).
+const YEAR_IST = new Intl.DateTimeFormat("en-IN", { year: "numeric", timeZone: "Asia/Kolkata" });
+
 export function Footer() {
   return (
     <DitheredFooter
@@ -43,11 +47,13 @@ export function Footer() {
       columns={COLUMNS}
       socials={SOCIALS}
       legal={[]}
-      copyright={`© ${new Date().getFullYear()} ${BRAND.name}. Made in India.`}
+      copyright={`© ${YEAR_IST.format(new Date())} ${BRAND.name}. Made in India.`}
       accent="var(--accent)"
       subscribeLabel="Drops and offers, straight to your inbox"
-      // ponytail: no newsletter backend yet — resolves so the thank-you shows; wire to a real list when one exists.
-      onSubscribe={async () => {}}
+      onSubscribe={async (email) => {
+        const res = await subscribeAction(email, "newsletter");
+        if (!res.ok) throw new Error(res.error);
+      }}
       extra={
         <a href={BRAND.poweredBy.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center hover:text-foreground" data-testid="powered-by">
           Powered by&nbsp;<span className="font-semibold text-brand">{BRAND.poweredBy.name}</span>

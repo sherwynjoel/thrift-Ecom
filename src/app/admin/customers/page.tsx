@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { formatDateIst } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
 import { listCustomers } from "@/server/services/admin-customers";
+import { countSubscribers } from "@/server/services/subscribers";
 import { requireAdminPage } from "../guard";
 
 export const metadata = { title: "Customers" };
@@ -30,13 +31,20 @@ export default async function AdminCustomersPage({ searchParams }: { searchParam
   const sp = await searchParams;
   const q = first(sp.q)?.trim().slice(0, 100) || undefined;
   const page = Math.min(Math.max(1, Math.floor(Number(first(sp.page))) || 1), MAX_PAGE);
-  const list = await listCustomers({ q, page });
+  const [list, subscribers] = await Promise.all([listCustomers({ q, page }), countSubscribers()]);
   const from = list.total === 0 ? 0 : (list.page - 1) * list.pageSize + 1;
   const to = Math.min(list.page * list.pageSize, list.total);
 
   return (
     <div className="space-y-5 pb-24 lg:pb-0">
-      <h1 className="text-4xl sm:text-5xl">Customers</h1>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <h1 className="text-4xl sm:text-5xl">Customers</h1>
+        {subscribers > 0 && (
+          <a href="/admin/subscribers-export" download className="inline-flex min-h-11 items-center text-sm text-text-muted underline-offset-4 hover:text-text hover:underline" data-testid="subscribers-export">
+            {subscribers} email {subscribers === 1 ? "signup" : "signups"} · Download CSV
+          </a>
+        )}
+      </div>
 
       <form method="get" role="search" className="flex w-full min-w-0 gap-2 sm:max-w-md">
         <Label htmlFor="customer-q" className="sr-only">Search customers</Label>

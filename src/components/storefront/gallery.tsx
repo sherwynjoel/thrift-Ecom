@@ -31,7 +31,7 @@ export function Gallery({ images, activeColor, productName }: { images: Img[]; a
         <Image src={main.url} alt={main.alt || productName} fill priority sizes="(min-width: 1024px) 50vw, 100vw" className="object-cover" />
       </button>
       <Dialog open={zoom} onOpenChange={setZoom}>
-        <DialogContent className="max-w-4xl bg-bg p-2">
+        <DialogContent className="bg-bg p-2 sm:max-w-4xl">
           <DialogTitle className="sr-only">{productName}</DialogTitle>
           <div className="relative aspect-[4/5] w-full">
             <Image src={main.url} alt={main.alt || productName} fill sizes="90vw" className="object-contain" />

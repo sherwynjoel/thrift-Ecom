@@ -12,6 +12,7 @@ const TABLES = [
   "Address",
   "Coupon",
   "Offer",
+  "Subscriber",
   "StoreSetting",
   "CartItem",
   "Cart",

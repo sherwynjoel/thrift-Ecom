@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type CSSProperties, type FormEvent, type PointerEvent, type ReactNode } from "react";
+import Link from "next/link";
 
 export type FooterLink = { label: string; href: string };
 export type FooterColumn = { title: string; links: FooterLink[] };
@@ -161,7 +162,7 @@ export default function DitheredFooter({
 
             <div className="mx-auto grid max-w-6xl grid-cols-3 gap-x-4 gap-y-12 px-6 pb-16 pt-16 sm:gap-x-10 sm:px-8 md:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
                 <div className="col-span-3 text-center md:col-span-1 md:text-left">
-                    <a href={brandHref} aria-label={`${brand} home`} className={`inline-flex rounded-sm text-base font-semibold tracking-tight ${focus}`}>{brandMark ?? brand}</a>
+                    <Link href={brandHref} aria-label={`${brand} home`} className={`inline-flex rounded-sm text-base font-semibold tracking-tight ${focus}`}>{brandMark ?? brand}</Link>
                     <p className="mx-auto mt-3 max-w-xs text-sm md:mx-0 leading-relaxed text-muted-foreground">{tagline}</p>
 
                     <form className="mx-auto mt-8 max-w-sm md:mx-0" onSubmit={submit}>
@@ -175,7 +176,7 @@ export default function DitheredFooter({
                                 autoComplete="email"
                                 value={email}
                                 onChange={(e) => { setEmail(e.target.value); setState("idle"); }}
-                                className="h-10 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 text-sm transition-colors focus:border-[var(--df-accent)] focus:outline focus:outline-2 focus:outline-offset-0 focus:outline-[var(--df-accent)] [@media(pointer:coarse)]:h-11"
+                                className="h-10 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 text-base transition-colors md:text-sm focus:border-[var(--df-accent)] focus:outline focus:outline-2 focus:outline-offset-0 focus:outline-[var(--df-accent)] [@media(pointer:coarse)]:h-11"
                             />
                             <button
                                 disabled={state === "sending"}
@@ -197,7 +198,7 @@ export default function DitheredFooter({
                         <ul className="mt-4 space-y-3 [@media(pointer:coarse)]:space-y-0">
                             {col.links.map((l) => (
                                 <li key={l.label}>
-                                    <a href={l.href} className={`rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground ${focus} ${coarse}`}>{l.label}</a>
+                                    <Link href={l.href} className={`rounded-sm text-sm text-muted-foreground transition-colors hover:text-foreground ${focus} ${coarse}`}>{l.label}</Link>
                                 </li>
                             ))}
                         </ul>
@@ -222,7 +223,7 @@ export default function DitheredFooter({
                     <div className="flex flex-col flex-wrap items-center gap-x-5 gap-y-2 sm:flex-row">
                         <p>{copyright}</p>
                         {legal.map((l) => (
-                            <a key={l.label} href={l.href} className={`rounded-sm transition-colors hover:text-foreground ${focus} ${coarse}`}>{l.label}</a>
+                            <Link key={l.label} href={l.href} className={`rounded-sm transition-colors hover:text-foreground ${focus} ${coarse}`}>{l.label}</Link>
                         ))}
                         {status && (
                             <a href={status.href} className={`inline-flex items-center gap-2 rounded-sm transition-colors hover:text-foreground ${focus} ${coarse}`}>

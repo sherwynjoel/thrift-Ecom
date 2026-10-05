@@ -5,7 +5,9 @@ import { redirect } from "next/navigation";
 import { zodFieldErrors } from "@/server/action-result";
 import { signIn } from "@/server/auth";
 import { clearGuestToken, readGuestToken } from "@/server/cart-cookie";
+import { emailDisabled } from "@/server/adapters/email";
 import { DomainError } from "@/server/errors";
+import { BRAND } from "@/config/brand";
 import { rateLimit } from "@/server/rate-limit";
 import { requestIp } from "@/server/request-ip";
 import { safeNext } from "@/server/safe-next";
@@ -101,6 +103,8 @@ export async function forgotPasswordAction(_prev: AuthFormState, formData: FormD
   const parsed = resetRequestSchema.safeParse({ email: formData.get("email") });
   if (!parsed.success) return { fieldErrors: zodFieldErrors(parsed.error) };
   if (!rateLimit(`forgot-email:${parsed.data.email}`, 3, 15 * MINUTE).ok) return RATE_LIMITED;
+  // Same answer for every address, so it still doesn't reveal which emails have accounts.
+  if (emailDisabled()) return { error: `Reset emails aren't switched on yet. Write to ${BRAND.supportEmail} and we'll sort out your password.` };
   try {
     await requestPasswordReset(parsed.data.email);
   } catch (err) {

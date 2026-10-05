@@ -53,6 +53,10 @@ export function ProductPurchase({ product, rating }: { product: ProductDetail; r
   const submit = () => {
     if (!chosen) {
       setSizeError(true);
+      // On phones the sticky bar's tap can come with the size picker off-screen; bring it into view first.
+      const el = scope.current as HTMLElement | null;
+      const r = el?.getBoundingClientRect();
+      if (el && r && (r.top < 0 || r.bottom > window.innerHeight)) el.scrollIntoView({ block: "center", behavior: "smooth" });
       animate(scope.current, { x: [0, -6, 6, -4, 4, 0] }, { duration: 0.4 });
       return;
     }

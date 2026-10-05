@@ -189,8 +189,13 @@ export async function deleteProduct(id: string): Promise<void> {
     });
     for (const r of rows) for (const u of [r.designFrontPreviewUrl, r.designBackPreviewUrl, r.printFrontUrl, r.printBackUrl]) if (u) ordered.add(u);
   }
+  // Order lines snapshot a product photo as their thumbnail; keep the ones past orders and invoices still show.
+  const imageUrls = p.images.map(({ url }) => url);
+  const shown = new Set(
+    imageUrls.length ? (await db.orderItem.findMany({ where: { imageUrl: { in: imageUrls } }, select: { imageUrl: true }, distinct: ["imageUrl"] })).map((r) => r.imageUrl) : [],
+  );
   const keys = [
-    ...p.images.map(({ url }) => uploadKeyFromUrl(url)),
+    ...imageUrls.filter((url) => !shown.has(url)).map((url) => uploadKeyFromUrl(url)),
     ...designKeys.filter((k) => !ordered.has(storage.getPublicUrl(k))),
   ];
   for (const key of keys) {
