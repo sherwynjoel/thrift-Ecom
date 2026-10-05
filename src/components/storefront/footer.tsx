@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Logo } from "@/components/brand/logo";
 import { BRAND } from "@/config/brand";
 import { FOOTER_LINKS } from "@/config/site";
 import { NewsletterForm } from "./newsletter-form";
@@ -14,7 +15,7 @@ export function Footer() {
     <footer className="mt-24 border-t border-border bg-surface" data-testid="site-footer">
       <div className="container-x grid gap-10 py-14 md:grid-cols-[1.4fr_repeat(3,1fr)]">
         <div className="space-y-4">
-          <p className="font-display text-4xl uppercase tracking-tight">{BRAND.name}</p>
+          <Logo className="h-10" />
           <p className="max-w-xs text-sm text-text-muted">{BRAND.tagline}</p>
           <NewsletterForm />
           <div className="flex gap-6 text-sm text-text-muted">

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AdminNav } from "@/components/admin/admin-nav";
 import { SignOutButton } from "@/components/storefront/account/sign-out-button";
+import { Logo } from "@/components/brand/logo";
 import { BRAND } from "@/config/brand";
 import { countToShip } from "@/server/services/admin-orders";
 import { countPendingReviews } from "@/server/services/admin-reviews";
@@ -19,7 +20,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <aside className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-surface/95 px-4 backdrop-blur lg:h-dvh lg:flex-col lg:items-stretch lg:gap-0 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:bg-surface lg:p-4 lg:backdrop-blur-none print:hidden">
         <AdminNav toShipCount={toShip} printQueueCount={toPrint} pendingReviewCount={toReview} />
         <div className="flex min-w-0 items-baseline gap-2 lg:order-1 lg:mb-8 lg:block">
-          <p className="truncate font-display text-xl uppercase lg:text-2xl">{BRAND.name}</p>
+          <Logo className="h-5 self-center lg:h-7" />
           <p className="text-xs uppercase tracking-widest text-text-muted">Admin</p>
         </div>
         <div className="ml-auto lg:order-3 lg:ml-0 lg:mt-6">
