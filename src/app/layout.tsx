@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Splash } from "@/components/brand/splash";
 import { Toaster } from "@/components/ui/sonner";
 import { BRAND } from "@/config/brand";
 import { DEFAULT_OG_IMAGE } from "@/lib/seo";
@@ -19,8 +20,10 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, view
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`dark ${displayFont.variable} ${bodyFont.variable}`}>
+    // suppressHydrationWarning: the splash script sets data-splash on <html> before React hydrates.
+    <html lang="en" className={`dark ${displayFont.variable} ${bodyFont.variable}`} suppressHydrationWarning>
       <body className="min-h-dvh">
+        <Splash />
         {children}
         <Toaster theme="dark" position="bottom-center" />
       </body>

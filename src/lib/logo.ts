@@ -4,18 +4,18 @@
 export const LOGO_VIEWBOX = "0 0 286 100";
 export const LOGO_ASPECT = 286 / 100;
 
-/** t, b and x — rendered in the current text colour. */
-export const LOGO_INK_PATH = [
-  // t: crossbar + stem with a curved foot
-  "M10 10H32V70A8 8 0 0 0 40 78H44V100H34A24 24 0 0 1 10 76Z",
-  "M0 30H44V52H0Z",
+/** Each ink letter on its own, so the splash screen can animate them one by one. */
+export const LOGO_LETTER_PATHS = {
+  // t: stem with a curved foot + crossbar
+  t: "M10 10H32V70A8 8 0 0 0 40 78H44V100H34A24 24 0 0 1 10 76ZM0 30H44V52H0Z",
   // b: stem + rounded bowl (counter wound the other way so it cuts out)
-  "M52 0H74V100H52Z",
-  "M76 30H98A24 24 0 0 1 122 54V76A24 24 0 0 1 98 100H76A24 24 0 0 1 52 76V54A24 24 0 0 1 76 30ZM74 52V78H98A2 2 0 0 0 100 76V54A2 2 0 0 0 98 52Z",
+  b: "M52 0H74V100H52ZM76 30H98A24 24 0 0 1 122 54V76A24 24 0 0 1 98 100H76A24 24 0 0 1 52 76V54A24 24 0 0 1 76 30ZM74 52V78H98A2 2 0 0 0 100 76V54A2 2 0 0 0 98 52Z",
   // x: two crossing diagonals
-  "M216 30H242L286 100H260Z",
-  "M260 30H286L242 100H216Z",
-].join("");
+  x: "M216 30H242L286 100H260ZM260 30H286L242 100H216Z",
+} as const;
+
+/** t, b and x — rendered in the current text colour. */
+export const LOGO_INK_PATH = LOGO_LETTER_PATHS.t + LOGO_LETTER_PATHS.b + LOGO_LETTER_PATHS.x;
 
 /** The box "o" — rendered in the brand lime. */
 export const LOGO_BOX_PATH = "M134 30H204V100H134ZM156 52V78H182V52Z";
