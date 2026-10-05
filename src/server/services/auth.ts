@@ -46,6 +46,11 @@ export async function verifyCredentials(email: string, password: string): Promis
   return ok ? toPublic(user) : null;
 }
 
+export async function findUserIdByEmail(email: string): Promise<string | null> {
+  const user = await db.user.findUnique({ where: { email: email.trim().toLowerCase() }, select: { id: true } });
+  return user?.id ?? null;
+}
+
 export async function getUserById(id: string): Promise<PublicUser | null> {
   const user = await db.user.findUnique({ where: { id } });
   return user ? toPublic(user) : null;

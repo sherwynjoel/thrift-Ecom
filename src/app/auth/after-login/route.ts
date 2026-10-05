@@ -15,8 +15,13 @@ export async function GET(request: Request) {
   if (session?.user?.id) {
     const guestToken = await readGuestToken();
     if (guestToken) {
-      await mergeGuestCartIntoUser(guestToken, session.user.id);
-      await clearGuestToken();
+      try {
+        await mergeGuestCartIntoUser(guestToken, session.user.id);
+        await clearGuestToken();
+      } catch (err) {
+        // Two callbacks racing (double tap, two tabs) can collide on the guest cart; the login itself still stands.
+        console.error("[after-login] guest cart merge failed", err);
+      }
     }
   }
   return NextResponse.redirect(new URL(next, origin));
