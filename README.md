@@ -17,7 +17,7 @@ Everything else is already built: the Docker image, the Compose stack (app, Post
 
 **Before launch:**
 
-- Brand name is set to `tbox`; set your real support email and social links in `src/config/brand.ts`, and the support email in `content/pages/contact.md` — the store ships with placeholders (`support@example.com`, empty social links). These are baked in at build time, so fixing them later needs `bash deploy/deploy.sh --no-pull`.
+- Brand name is set to `tbox`; support email is `tboxcbe@gmail.com`; add social links in `src/config/brand.ts` (empty for now). These are baked in at build time, so fixing them later needs `bash deploy/deploy.sh --no-pull`.
 - Try the design studio's touch gestures on a real iPhone (Safari) and a real Android phone (Chrome) — see [Design studio and print queue](#design-studio-and-print-queue).
 - Confirm each carrier's tracking URL with a real AWB (`src/lib/carriers.ts`).
 - Fill in seller name, address, state and GSTIN in **Admin → Settings**.

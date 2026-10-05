@@ -1,7 +1,7 @@
 export const BRAND = {
   name: "tbox",
   tagline: "Wear what you mean.",
-  supportEmail: "support@example.com",
+  supportEmail: "tboxcbe@gmail.com",
   freeShippingThresholdPaise: 99900,
   currency: "INR",
   social: {
