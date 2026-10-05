@@ -57,7 +57,7 @@ export function UploadPanel({ onUpload, busy }: { onUpload(file: File): Promise<
         <span className="font-display text-xl tracking-wide">{busy ? "Uploading…" : "Choose an image"}</span>
         <span className="text-xs text-text-muted">Upload PNG, JPG or WebP · up to 10 MB</span>
       </label>
-      <p className="text-xs leading-relaxed text-text-muted">For a sharp print use at least 3600 × 4800 px for a full-size design.</p>
+      <p className="text-xs leading-relaxed text-text-muted">For a sharp print, use the largest version of your image you have. The studio warns you if it looks blurry.</p>
       <p className="text-xs leading-relaxed text-text-muted">Transparent PNGs print best. Only the part inside the dashed area is printed.</p>
     </div>
   );

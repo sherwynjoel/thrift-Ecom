@@ -1,6 +1,7 @@
 import { db } from "@/server/db";
-import type { Fit, OrderStatus, ProductStatus } from "@prisma/client";
+import type { Fit, Order, OrderItem, OrderStatus, ProductStatus, StoreSetting } from "@prisma/client";
 import { slugify } from "@/lib/slug";
+import { settingsInputSchema } from "@/lib/validation/settings";
 
 let counter = 0;
 const next = () => ++counter;
@@ -151,6 +152,37 @@ export async function createDesignRow(
       createdAt: over.createdAt,
     },
   });
+}
+
+/** A complete, valid settings input built from a stored row (robust to keys added by later phases). */
+export function settingsInputFrom(row: StoreSetting): Record<string, unknown> {
+  const shape = (settingsInputSchema as unknown as { _def: { schema: { shape: Record<string, unknown> } } })._def.schema.shape;
+  const keys = Object.keys(shape) as (keyof StoreSetting)[];
+  return Object.fromEntries(keys.map((k) => [k, row[k]]));
+}
+
+/** An order (default DELIVERED, delivered now) with one item for the product's first variant. */
+export async function createDeliveredPurchase(
+  userId: string,
+  productId: string,
+  over: { deliveredAt?: Date; status?: OrderStatus; quantity?: number } = {},
+): Promise<{ order: Order; item: OrderItem }> {
+  const product = await db.product.findUniqueOrThrow({ where: { id: productId }, include: { variants: { orderBy: { sortOrder: "asc" }, take: 1 } } });
+  const status = over.status ?? "DELIVERED";
+  const created = await createOrderRow(userId, { status });
+  const deliveredAt = status === "DELIVERED" ? over.deliveredAt ?? new Date() : null;
+  const order = await db.order.update({ where: { id: created.id }, data: { deliveredAt, shippedAt: deliveredAt } });
+  const v = product.variants[0];
+  const quantity = over.quantity ?? 1;
+  const unit = v?.pricePaise ?? product.basePricePaise;
+  const item = await db.orderItem.create({
+    data: {
+      orderId: order.id, productId, variantId: v?.id ?? null, productName: product.name, productSlug: product.slug,
+      size: v?.size ?? "M", colorName: v?.colorName ?? "Black", sku: v?.sku ?? `SKU-${order.id}`,
+      unitPricePaise: unit, quantity, lineTotalPaise: unit * quantity,
+    },
+  });
+  return { order, item };
 }
 
 export async function createOrderItemRow(

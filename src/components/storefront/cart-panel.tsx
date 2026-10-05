@@ -21,7 +21,7 @@ export function CartPanel({ cart, variant, preview }: { cart: CartView; variant:
       <ul className="divide-y divide-border" data-testid="cart-lines">
         {cart.items.map((line) => <CartLine key={line.id} line={line} />)}
       </ul>
-      <div className={variant === "page" ? "h-fit rounded-md border border-border bg-surface p-6" : "mt-auto border-t border-border pt-4"}>
+      <div className={variant === "page" ? "h-fit rounded-md border border-border bg-surface p-6" : "mt-auto border-t border-border pt-4 pb-safe"}>
         <FreeShippingBar subtotalPaise={preview?.discountedSubtotalPaise ?? cart.subtotalPaise} thresholdPaise={preview?.freeShippingThresholdPaise} />
         {preview?.discountPaise ? (
           <p data-testid="cart-offer" className="mt-4 text-sm text-brand">{preview.offerLabel}: −{formatPaise(preview.discountPaise)}</p>

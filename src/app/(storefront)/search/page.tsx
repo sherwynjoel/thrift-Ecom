@@ -8,7 +8,7 @@ type Props = { searchParams: Promise<{ q?: string; page?: string }> };
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const { q } = await searchParams;
-  return { title: q ? `Search: ${q}` : "Search" };
+  return { title: q ? `Search: ${q}` : "Search", robots: { index: false, follow: true } };
 }
 
 export default async function SearchPage({ searchParams }: Props) {
@@ -17,9 +17,9 @@ export default async function SearchPage({ searchParams }: Props) {
   const results = term ? await searchProducts(term, Math.max(1, Number(page) || 1)) : null;
   return (
     <div className="container-x py-10">
-      <form action="/search" role="search" className="mb-8 flex max-w-xl items-center gap-2 rounded-full border border-border bg-surface px-4 py-2">
+      <form action="/search" role="search" className="mb-8 flex max-w-xl items-center gap-2 rounded-full border border-border bg-surface px-4">
         <Search className="size-5 text-text-muted" />
-        <input name="q" defaultValue={term} placeholder="Search tees" autoFocus className="flex-1 bg-transparent outline-none placeholder:text-text-muted" aria-label="Search products" data-testid="search-input" />
+        <input name="q" type="search" inputMode="search" enterKeyHint="search" autoComplete="off" defaultValue={term} placeholder="Search tees" autoFocus className="h-11 min-w-0 flex-1 bg-transparent outline-none placeholder:text-text-muted" aria-label="Search products" data-testid="search-input" />
       </form>
       {results ? (
         <>

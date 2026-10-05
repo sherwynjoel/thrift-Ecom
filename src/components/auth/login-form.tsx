@@ -15,13 +15,13 @@ export function LoginForm({ next }: { next: string }) {
       <input type="hidden" name="next" value={next} />
       <div>
         <Label htmlFor="email">Email</Label>
-        <Input id="email" name="email" type="email" autoComplete="email" required className="mt-1 bg-bg" />
+        <Input id="email" name="email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" required className="mt-1 bg-bg" />
         <FieldError errors={state.fieldErrors?.email} />
       </div>
       <div>
         <div className="flex items-center justify-between">
           <Label htmlFor="password">Password</Label>
-          <Link href="/forgot-password" className="text-xs text-text-muted hover:text-text">Forgot?</Link>
+          <Link href="/forgot-password" className="-my-3 inline-flex min-h-11 items-center px-1 text-sm text-text-muted hover:text-text">Forgot?</Link>
         </div>
         <Input id="password" name="password" type="password" autoComplete="current-password" required className="mt-1 bg-bg" />
         <FieldError errors={state.fieldErrors?.password} />

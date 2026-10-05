@@ -7,15 +7,19 @@ import { AdminNoteForm } from "@/components/admin/orders/admin-note-form";
 import { OrderActions, ResolveAttentionButton } from "@/components/admin/orders/order-actions";
 import { OrderStatusBadge } from "@/components/admin/orders/order-status-badge";
 import { OrderTimeline } from "@/components/admin/orders/order-timeline";
+import { PrintItemActions } from "@/components/admin/print-queue/print-item-actions";
 import { TrackingForm } from "@/components/admin/orders/tracking-form";
+import { CustomPrintThumbs } from "@/components/storefront/custom-print-thumbs";
 import { PriceBreakup } from "@/components/storefront/price-breakup";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BRAND } from "@/config/brand";
 import { addressLines, addressText, formatPhone } from "@/lib/address-format";
 import { orderWhatsappText, telLink, whatsappLink } from "@/lib/contact-links";
+import { customPrintLabel, isCustomItem, printSidesOf } from "@/lib/custom-pricing";
 import { formatDateTimeIst } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
-import { isPaidStatus } from "@/lib/order-status";
+import { isPaidStatus, TO_SHIP_STATUSES } from "@/lib/order-status";
 import { NotFoundError } from "@/server/errors";
 import { getAdminOrder } from "@/server/services/admin-orders";
 import { orderDiscountLabel } from "@/server/services/order-records";
@@ -38,6 +42,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
     throw err;
   });
   const attention = order.needsAttention ? order.events.find((e) => e.type === "ATTENTION") : undefined;
+  const inPrintQueue = (TO_SHIP_STATUSES as readonly string[]).includes(order.status);
   const waText = orderWhatsappText({ number: order.number, name: order.ship.name, brand: BRAND.name });
 
   return (
@@ -136,12 +141,15 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
             <h2 id="items-heading" className="text-2xl">Items</h2>
             <ul className="mt-2 divide-y divide-border" aria-label="Items">
               {order.items.map((i) => (
-                <li key={i.id} className="flex gap-3 py-3" data-testid="order-item">
+                <li key={i.id} className="flex flex-wrap gap-3 py-3" data-testid="order-item">
                   <div className="relative size-12 shrink-0 overflow-hidden rounded-sm bg-surface-raised">
                     {i.imageUrl && <Image src={i.imageUrl} alt="" fill sizes="48px" className="object-cover" />}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{i.productName}</p>
+                  <div className="min-w-0 flex-1 basis-0 space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium">{i.productName}</p>
+                      {isCustomItem(i) && <Badge variant="outline">Custom</Badge>}
+                    </div>
                     <p className="text-xs text-text-muted">{i.colorName} / {i.size}</p>
                     <p className="break-all font-mono text-xs text-text-muted">{i.sku}</p>
                   </div>
@@ -149,6 +157,24 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ id:
                     <p className="font-medium">× {i.quantity}</p>
                     <p className="text-text-muted">{formatPaise(i.lineTotalPaise)}</p>
                   </div>
+                  {isCustomItem(i) && (
+                    <div className="w-full space-y-2" data-testid="order-item-custom">
+                      <p className="text-xs font-medium text-brand">{customPrintLabel(printSidesOf(i))}</p>
+                      <CustomPrintThumbs front={i.designFrontPreviewUrl} back={i.designBackPreviewUrl} size={96} className="flex-wrap" />
+                      <PrintItemActions
+                        itemId={i.id}
+                        orderNumber={order.number}
+                        customerName={order.ship.name}
+                        customerPhone={order.ship.phone}
+                        hasFront={i.printFrontUrl !== null}
+                        hasBack={i.printBackUrl !== null}
+                        printedAt={i.printedAt}
+                        heldAt={i.heldAt}
+                        holdNote={i.holdNote}
+                        actionable={inPrintQueue}
+                      />
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

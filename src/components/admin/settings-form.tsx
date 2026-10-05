@@ -22,6 +22,7 @@ const LEGEND = "px-1 font-display text-2xl uppercase";
 type Text = {
   shippingFee: string; freeShippingThreshold: string; lowStockThreshold: string; adminNotifyEmail: string; whatsappNumber: string;
   sellerName: string; sellerAddress: string; sellerState: string; gstin: string; gstRateLowPct: string; gstRateHighPct: string; gstThreshold: string;
+  customFrontFee: string; customBackFee: string; announcementText: string; announcementHref: string;
 };
 
 function fromSettings(s: StoreSettings): Text {
@@ -30,6 +31,8 @@ function fromSettings(s: StoreSettings): Text {
     lowStockThreshold: String(s.lowStockThreshold), adminNotifyEmail: s.adminNotifyEmail ?? "", whatsappNumber: s.whatsappNumber ?? "",
     sellerName: s.sellerName, sellerAddress: s.sellerAddress, sellerState: s.sellerState, gstin: s.gstin ?? "",
     gstRateLowPct: String(s.gstRateLowPct), gstRateHighPct: String(s.gstRateHighPct), gstThreshold: paiseToRupees(s.gstThresholdPaise),
+    customFrontFee: paiseToRupees(s.customFrontFeePaise), customBackFee: paiseToRupees(s.customBackFeePaise),
+    announcementText: s.announcementText ?? "", announcementHref: s.announcementHref ?? "",
   };
 }
 
@@ -37,6 +40,8 @@ export function SettingsForm({ settings }: { settings: StoreSettings }) {
   const [t, setT] = useState<Text>(() => fromSettings(settings));
   const [dailySummaryEnabled, setDaily] = useState(settings.dailySummaryEnabled);
   const [abandonedCartEnabled, setAbandoned] = useState(settings.abandonedCartEnabled);
+  const [autoApproveReviews, setAutoApprove] = useState(settings.autoApproveReviews);
+  const [reviewRequestsEnabled, setReviewRequests] = useState(settings.reviewRequestsEnabled);
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -68,8 +73,14 @@ export function SettingsForm({ settings }: { settings: StoreSettings }) {
       gstRateHighPct: whole(t.gstRateHighPct, "gstRateHighPct"),
       gstThresholdPaise: rupees(t.gstThreshold, "gstThresholdPaise"),
       whatsappNumber: t.whatsappNumber,
+      customFrontFeePaise: rupees(t.customFrontFee, "customFrontFeePaise"),
+      customBackFeePaise: rupees(t.customBackFee, "customBackFeePaise"),
+      announcementText: t.announcementText,
+      announcementHref: t.announcementHref,
       dailySummaryEnabled,
       abandonedCartEnabled,
+      autoApproveReviews,
+      reviewRequestsEnabled,
     };
     if (Object.keys(local).length) {
       setErrors(local);
@@ -118,6 +129,23 @@ export function SettingsForm({ settings }: { settings: StoreSettings }) {
       </fieldset>
 
       <fieldset className={FIELDSET}>
+        <legend className={LEGEND}>Custom prints</legend>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="s-front-fee">Front print fee (₹)</Label>
+            <Input id="s-front-fee" value={t.customFrontFee} onChange={set("customFrontFee")} inputMode="decimal" className={FIELD} aria-describedby="s-print-fee-hint" />
+            <FieldError errors={errors.customFrontFeePaise} />
+          </div>
+          <div>
+            <Label htmlFor="s-back-fee">Back print fee (₹)</Label>
+            <Input id="s-back-fee" value={t.customBackFee} onChange={set("customBackFee")} inputMode="decimal" className={FIELD} aria-describedby="s-print-fee-hint" />
+            <FieldError errors={errors.customBackFeePaise} />
+          </div>
+        </div>
+        <p id="s-print-fee-hint" className="text-xs text-text-muted">Added to the tee price when that side has a design. 0 = free.</p>
+      </fieldset>
+
+      <fieldset className={FIELDSET}>
         <legend className={LEGEND}>Stock</legend>
         <div className="sm:max-w-xs">
           <Label htmlFor="s-low">Low-stock threshold</Label>
@@ -125,6 +153,36 @@ export function SettingsForm({ settings }: { settings: StoreSettings }) {
           <p id="s-low-hint" className="mt-1 text-xs text-text-muted">A variant with this many or fewer counts as low.</p>
           <FieldError errors={errors.lowStockThreshold} />
         </div>
+      </fieldset>
+
+      <fieldset className={FIELDSET}>
+        <legend className={LEGEND}>Storefront</legend>
+        <div>
+          <div className="flex items-baseline justify-between gap-2">
+            <Label htmlFor="s-announcement">Announcement text</Label>
+            <span className="text-xs text-text-muted" aria-hidden="true">{t.announcementText.length}/140</span>
+          </div>
+          <Input id="s-announcement" value={t.announcementText} onChange={set("announcementText")} maxLength={140} className={FIELD} aria-describedby="s-announcement-hint" />
+          <p id="s-announcement-hint" className="mt-1 text-xs text-text-muted">Shown in a bar above the header on every page. Leave empty to hide it.</p>
+          <FieldError errors={errors.announcementText} />
+        </div>
+        <div>
+          <Label htmlFor="s-announcement-href">Announcement link (optional)</Label>
+          <Input id="s-announcement-href" value={t.announcementHref} onChange={set("announcementHref")} inputMode="url" placeholder="/collections/new-drops" autoCapitalize="none" spellCheck={false} className={FIELD} />
+          <FieldError errors={errors.announcementHref} />
+        </div>
+      </fieldset>
+
+      <fieldset className={FIELDSET}>
+        <legend className={LEGEND}>Reviews</legend>
+        <label className="flex min-h-11 items-center gap-3 text-sm">
+          <input type="checkbox" checked={autoApproveReviews} onChange={(e) => setAutoApprove(e.target.checked)} className="size-5 shrink-0 accent-brand" data-testid="auto-approve-reviews" />
+          Publish 4★ and 5★ reviews immediately (others wait for approval)
+        </label>
+        <label className="flex min-h-11 items-center gap-3 text-sm">
+          <input type="checkbox" checked={reviewRequestsEnabled} onChange={(e) => setReviewRequests(e.target.checked)} className="size-5 shrink-0 accent-brand" data-testid="review-requests-enabled" />
+          Email customers for a review 5 days after delivery
+        </label>
       </fieldset>
 
       <fieldset className={FIELDSET}>

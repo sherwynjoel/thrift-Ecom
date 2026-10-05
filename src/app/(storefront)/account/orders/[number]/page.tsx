@@ -16,13 +16,14 @@ import { customPrintLabel, isCustomItem, printSidesOf } from "@/lib/custom-prici
 import { formatDateTimeIst, formatTimeIst } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
 import { isPaidStatus, pendingPaymentMode } from "@/lib/order-status";
+import { NO_INDEX } from "@/lib/seo";
 import { isHttpUrl } from "@/lib/url";
 import { auth } from "@/server/auth";
 import { NotFoundError } from "@/server/errors";
 import { orderDiscountLabel } from "@/server/services/order-records";
 import { getOrderForUser, hasFailedPaymentAttempt } from "@/server/services/orders";
 
-export const metadata: Metadata = { title: "Order" };
+export const metadata: Metadata = { title: "Order", robots: NO_INDEX };
 export const dynamic = "force-dynamic";
 
 function paymentFailed(v: string | string[] | undefined): boolean {
@@ -105,14 +106,15 @@ export default async function AccountOrderDetailPage({ params, searchParams }: {
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Link href={`/products/${i.productSlug}`} className="line-clamp-2 text-sm font-medium hover:underline">{i.productName}</Link>
+                    <Link href={`/products/${i.productSlug}`} className="line-clamp-2 min-h-11 text-sm font-medium hover:underline">{i.productName}</Link>
                     {isCustomItem(i) && <Badge variant="outline">Custom</Badge>}
                   </div>
                   <p className="text-xs text-text-muted">{i.colorName} / {i.size} × {i.quantity}</p>
                   {isCustomItem(i) && (
                     <>
                       <p className="text-xs font-medium text-brand">{customPrintLabel(printSidesOf(i))}</p>
-                      <CustomPrintThumbs front={i.designFrontPreviewUrl} back={i.designBackPreviewUrl} className="mt-1" />
+                      {/* The line image is already one of the previews (front, or back for back-only designs); don't repeat it. */}
+                      <CustomPrintThumbs front={i.designFrontPreviewUrl} back={i.designBackPreviewUrl} exclude={i.imageUrl} className="mt-1" />
                     </>
                   )}
                 </div>

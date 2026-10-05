@@ -17,17 +17,17 @@ export function Footer() {
           <p className="font-display text-4xl uppercase tracking-tight">{BRAND.name}</p>
           <p className="max-w-xs text-sm text-text-muted">{BRAND.tagline}</p>
           <NewsletterForm />
-          <div className="flex gap-4 text-sm text-text-muted">
-            <a href={BRAND.social.instagram} target="_blank" rel="noreferrer" className="hover:text-text">Instagram</a>
-            <a href={BRAND.social.youtube} target="_blank" rel="noreferrer" className="hover:text-text">YouTube</a>
+          <div className="flex gap-6 text-sm text-text-muted">
+            <a href={BRAND.social.instagram} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center hover:text-text">Instagram</a>
+            <a href={BRAND.social.youtube} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center hover:text-text">YouTube</a>
           </div>
         </div>
         {GROUPS.map((g) => (
           <div key={g.title}>
-            <p className="mb-4 font-display text-xl uppercase">{g.title}</p>
-            <ul className="space-y-2 text-sm text-text-muted">
+            <p className="mb-2 font-display text-xl uppercase lg:mb-4">{g.title}</p>
+            <ul className="text-sm text-text-muted lg:space-y-2">
               {g.links.map((l) => (
-                <li key={l.href}><Link href={l.href} className="hover:text-text">{l.label}</Link></li>
+                <li key={l.href}><Link href={l.href} className="inline-flex min-h-11 min-w-11 items-center hover:text-text lg:min-h-0">{l.label}</Link></li>
               ))}
             </ul>
           </div>
@@ -36,7 +36,7 @@ export function Footer() {
       <div className="flex flex-col items-center justify-center gap-1 border-t border-border py-6 text-center text-xs text-text-muted sm:flex-row sm:gap-3">
         <span>© {new Date().getFullYear()} {BRAND.name}. Made in India.</span>
         <span className="hidden sm:inline" aria-hidden="true">·</span>
-        <a href={BRAND.poweredBy.url} target="_blank" rel="noreferrer" className="hover:text-text" data-testid="powered-by">
+        <a href={BRAND.poweredBy.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center hover:text-text" data-testid="powered-by">
           Powered by <span className="font-semibold text-brand">{BRAND.poweredBy.name}</span>
         </a>
       </div>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  customFeePaise, customFeesOf, customPrintLabel, customUnitPricePaise, designSides, isCustomItem, NO_CUSTOM_FEES, printSidesOf,
+  bagLineKey, customFeePaise, customFeesOf, customPrintLabel, customUnitPricePaise, designSides, isCustomItem, NO_CUSTOM_FEES, printSidesOf,
 } from "@/lib/custom-pricing";
 import { priceCart, type PricingContext, type PricingOffer } from "@/lib/pricing";
 
@@ -20,13 +20,19 @@ describe("custom print fees", () => {
     expect(customUnitPricePaise(54900, { front: true, back: true }, fees)).toBe(69800);
   });
 
-  it("derives sides from print keys or print urls", () => {
+  it("derives sides from print keys or preview snapshots", () => {
     expect(designSides({ frontPrintKey: "k", backPrintKey: null })).toEqual({ front: true, back: false });
-    expect(printSidesOf({ printFrontUrl: null, printBackUrl: "/b.png" })).toEqual({ front: false, back: true });
-    expect(printSidesOf({ printFrontUrl: null, printBackUrl: null })).toBeNull();
-    expect(isCustomItem({ printFrontUrl: "/f.png", printBackUrl: null })).toBe(true);
-    expect(isCustomItem({ printFrontUrl: null, printBackUrl: null })).toBe(false);
+    expect(printSidesOf({ designFrontPreviewUrl: null, designBackPreviewUrl: "/b.png" })).toEqual({ front: false, back: true });
+    expect(printSidesOf({ designFrontPreviewUrl: null, designBackPreviewUrl: null })).toBeNull();
+    expect(isCustomItem({ designFrontPreviewUrl: "/f.png", designBackPreviewUrl: null })).toBe(true);
+    expect(isCustomItem({ designFrontPreviewUrl: null, designBackPreviewUrl: null })).toBe(false);
     expect(customFeesOf({ customFrontFeePaise: 1, customBackFeePaise: 2 })).toEqual({ frontPaise: 1, backPaise: 2 });
+  });
+
+  it("keys bag lines by variant and design", () => {
+    expect(bagLineKey("v1", null)).toBe("v1|");
+    expect(bagLineKey("v1", "d1")).toBe("v1|d1");
+    expect(bagLineKey("v1", "d1")).not.toBe(bagLineKey("v1", null));
   });
 
   it("labels the printed sides", () => {

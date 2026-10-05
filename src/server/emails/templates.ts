@@ -5,7 +5,7 @@ import { formatPaise } from "@/lib/money";
 import { isHttpUrl } from "@/lib/url";
 import { absoluteUrl, siteUrl } from "@/lib/site-url";
 import { customPrintLabel, printSidesOf } from "@/lib/custom-pricing";
-import type { OrderView } from "@/server/services/order-records";
+import type { CustomerOrderView as OrderView } from "@/server/services/order-records";
 
 export interface RenderedEmail { subject: string; html: string; text: string }
 export interface LowStockRow { productName: string; size: string; colorName: string; sku: string; stock: number }
@@ -149,5 +149,19 @@ export function abandonedCartEmail(args: { name: string | null; items: { name: s
     subject: "You left something in your bag",
     html: layout(`Still thinking it over, ${firstName(args.name ?? "")}?`, `<p>Your bag is saved:</p><ul>${list}</ul><p>Sizes sell out fast. Pick up where you left off.</p>${button(`${siteUrl()}/cart`, "Back to your bag")}`),
     text: `Your bag is saved:\n${args.items.map((i) => `- ${i.name} (${i.colorName} / ${i.size})`).join("\n")}\n${siteUrl()}/cart`,
+  };
+}
+
+export interface ReviewRequestItem { name: string; url: string }
+
+export function reviewRequestEmail(args: { name: string | null; orderNumber: string; items: ReviewRequestItem[] }): RenderedEmail {
+  const list = args.items.map((i) => `<li style="margin:0 0 8px"><a href="${e(i.url)}" style="color:#111">${e(i.name)}</a></li>`).join("");
+  return {
+    subject: oneLine(`How is your order ${args.orderNumber}?`),
+    html: layout(
+      `How are you liking it, ${firstName(args.name ?? "")}?`,
+      `<p>Your order <strong>${e(args.orderNumber)}</strong> arrived a few days ago. A quick star rating helps other shoppers pick the right tee.</p><ul style="padding-left:18px">${list}</ul>${button(args.items[0].url, "Rate your order")}`,
+    ),
+    text: `Your order ${args.orderNumber} arrived a few days ago. Rate it:\n${args.items.map((i) => `- ${i.name}: ${i.url}`).join("\n")}`,
   };
 }

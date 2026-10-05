@@ -37,7 +37,7 @@ export default async function AdminOffersPage() {
                     <Link href={`/admin/offers/${o.id}`} className="break-words font-medium after:absolute after:inset-0 hover:underline">{o.label}</Link>
                     <span className="md:hidden"><PromoStatePill promo={o} /></span>
                   </div>
-                  <p className="text-xs text-text-muted">{describeOffer(o)}</p>
+                  <p className="text-xs text-text-muted">{describeOffer(o)}{o.includeCustom && " · incl. custom"}</p>
                 </div>
                 <p className="text-sm">{o.collectionName ?? "All products"}</p>
                 <p className="text-sm text-text-muted">{promoWindow(o)}</p>

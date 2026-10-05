@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { db } from "@/server/db";
 import { getStorage } from "@/server/adapters/storage";
 
@@ -19,7 +20,8 @@ async function deleteFile(key: string): Promise<boolean> {
 }
 
 /**
- * 1. Designs older than 30 days that no cart line and no order line references: row, then preview/print files.
+ * 1. Designs older than 30 days that no order line references and that sit in no bag except guest bags idle for
+ *    30 days (no change to the bag or any of its lines): row (its cart lines cascade), then preview/print files.
  *    Their DesignAsset rows lose designId (SetNull) and fall to step 2.
  * 2. Uploaded assets older than 24 h that no design uses: row, then file. An asset a design still uses
  *    (designId set, or listed in a design's assetKeys) is kept; the delete is conditional on designId
@@ -27,7 +29,9 @@ async function deleteFile(key: string): Promise<boolean> {
  */
 export async function runPurgeDesigns(now: Date = new Date()): Promise<{ purged: number; filesDeleted: number }> {
   const cutoff = new Date(now.getTime() - DESIGN_RETENTION_DAYS * DAY_MS);
-  const unreferenced = { cartItems: { none: {} }, orderItems: { none: {} } };
+  const idleGuestCart = { userId: null, updatedAt: { lt: cutoff }, items: { none: { updatedAt: { gte: cutoff } } } };
+  // `every` also holds for a design in no bag at all.
+  const unreferenced = { orderItems: { none: {} }, cartItems: { every: { cart: idleGuestCart } } } satisfies Prisma.DesignWhereInput;
   const stale = await db.design.findMany({
     where: { createdAt: { lt: cutoff }, ...unreferenced },
     orderBy: { createdAt: "asc" },
@@ -37,7 +41,7 @@ export async function runPurgeDesigns(now: Date = new Date()): Promise<{ purged:
   let purged = 0;
   let filesDeleted = 0;
   for (const d of stale) {
-    // Conditional delete: a design added to a bag or ordered since the read survives.
+    // Conditional delete: a design added to a bag, touched in its guest bag or ordered since the read survives.
     const r = await db.design.deleteMany({ where: { id: d.id, ...unreferenced } });
     if (r.count !== 1) continue;
     purged++;

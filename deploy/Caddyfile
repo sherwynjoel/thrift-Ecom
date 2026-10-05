@@ -1,0 +1,41 @@
+# Caddy terminates TLS (automatic Let's Encrypt certificates for $DOMAIN) and proxies to the app container.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Request body limits, refused before they reach Node. The design studio's print uploads (POST /api/designs,
+	# photo prints up to 91 MB per request) get 100 MB; everything else (product images, studio assets) gets 50 MB.
+	# Two mutually exclusive matchers: two request_body handlers on one request would apply the smaller limit.
+	@designs path /api/designs /api/designs/*
+	@not_designs not path /api/designs /api/designs/*
+	request_body @designs {
+		max_size 100MB
+	}
+	request_body @not_designs {
+		max_size 50MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+		-X-Powered-By
+	}
+
+	@static path /_next/static/*
+	header @static Cache-Control "public, max-age=31536000, immutable"
+
+	reverse_proxy app:3000
+
+	log {
+		output stdout
+		format console
+	}
+}
+
+# Send www to the bare domain (needs a DNS record for www too; see the runbook).
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}

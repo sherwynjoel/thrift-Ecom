@@ -12,7 +12,9 @@ export function Parallax({ amount = 40, className, children }: { amount?: number
 
   useGSAP(
     () => {
-      if (!ref.current || reduced) return;
+      // Static on phones: scrubbed tweens cost scroll smoothness on low-end devices. Read in the effect (not
+      // via state) so the first client commit never applies a tween it would then revert.
+      if (!ref.current || reduced || window.matchMedia("(max-width: 767px)").matches) return;
       gsap.fromTo(
         ref.current,
         { y: -amount },

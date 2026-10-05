@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { BRAND } from "@/config/brand";
 import { listCollections } from "@/server/services/catalog";
 
-export const metadata: Metadata = { title: "Collections" };
+export const metadata: Metadata = {
+  title: "Collections",
+  description: `All collections at ${BRAND.name}`,
+  alternates: { canonical: "/collections" },
+};
 
 export default async function CollectionsIndex() {
   const collections = await listCollections();

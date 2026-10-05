@@ -19,8 +19,14 @@ async function load(slug: string): Promise<StudioProduct> {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const product = await load((await params).slug);
-  return { title: `Design your ${product.name}`, robots: { index: false, follow: true } };
+  const { slug } = await params;
+  const product = await load(slug);
+  return {
+    title: `Customize ${product.name}`,
+    description: `Design your own ${product.name} — upload artwork or type a line, front and back, and we print it for you.`,
+    alternates: { canonical: `/customize/${slug}` },
+    robots: { index: false, follow: true },
+  };
 }
 
 export default async function StudioPage({ params, searchParams }: Props) {

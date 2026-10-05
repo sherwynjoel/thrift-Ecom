@@ -1,4 +1,4 @@
-import type { OrderView } from "@/server/services/order-records";
+import type { CustomerOrderView as OrderView } from "@/server/services/order-records";
 import { isCustomItem } from "@/lib/custom-pricing";
 
 export const HSN_TSHIRT = "6109";

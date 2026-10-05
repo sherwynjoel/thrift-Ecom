@@ -4,7 +4,7 @@ import { resetDb } from "../helpers/db";
 import { createDesignRow, createProduct, createUser } from "../helpers/fixtures";
 import { addItem, getCart, mergeGuestCartIntoUser, updateItem } from "@/server/services/cart";
 import { getSettings } from "@/server/services/settings";
-import { NotFoundError, OutOfStockError, ValidationError } from "@/server/errors";
+import { ConflictError, NotFoundError, OutOfStockError, ValidationError } from "@/server/errors";
 
 async function blank(stock = 10, over: { slug?: string; basePricePaise?: number } = {}) {
   return createProduct({ isCustomizable: true, ...over, variants: [{ size: "M", colorName: "Black", stock }] });
@@ -33,6 +33,19 @@ describe("cart with custom lines", () => {
     const view = await addItem({ guestToken: "g1" }, p.variants[0].id, 2, { designId: d.id });
     expect(view.items).toHaveLength(1);
     expect(view.items[0].quantity).toBe(3);
+  });
+
+  it("holds at most 10 custom designs per bag, and still takes more of one already in it", async () => {
+    const p = await blank(50);
+    const v = p.variants[0];
+    const designs = [];
+    for (let i = 0; i < 11; i++) designs.push(await createDesignRow({ productId: p.id, cartToken: "g1" }));
+    for (const d of designs.slice(0, 10)) await addItem({ guestToken: "g1" }, v.id, 1, { designId: d.id });
+    const err = await addItem({ guestToken: "g1" }, v.id, 1, { designId: designs[10].id }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictError);
+    expect((err as Error).message).toBe("Your bag can hold up to 10 custom designs");
+    expect((await addItem({ guestToken: "g1" }, v.id, 1, { designId: designs[0].id })).items).toHaveLength(10);
+    expect((await addItem({ guestToken: "g1" }, v.id, 1)).items).toHaveLength(11); // plain lines are not capped
   });
 
   it("refuses designs owned by someone else, made for another product or another color", async () => {

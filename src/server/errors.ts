@@ -52,6 +52,12 @@ export class RateLimitedError extends DomainError {
   }
 }
 
+export class ServiceUnavailableError extends DomainError {
+  constructor(public readonly retryAfterSec: number, message = "The server is busy. Please try again shortly.") {
+    super("SERVICE_UNAVAILABLE", message, 503, { retryAfterSec });
+  }
+}
+
 export class PaymentError extends DomainError {
   constructor(message = "The payment could not be processed. Please try again.") {
     super("PAYMENT_ERROR", message, 502);

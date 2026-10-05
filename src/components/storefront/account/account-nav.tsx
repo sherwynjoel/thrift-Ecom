@@ -7,13 +7,14 @@ import { cn } from "@/lib/utils";
 const ITEMS = [
   { href: "/account", label: "Overview", exact: true },
   { href: "/account/orders", label: "Orders" },
+  { href: "/account/wishlist", label: "Wishlist" },
   { href: "/account/addresses", label: "Addresses" },
 ];
 
 export function AccountNav() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Account" className="flex gap-2 overflow-x-auto">
+    <nav aria-label="Account" className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0">
       {ITEMS.map(({ href, label, exact }) => {
         const active = exact ? pathname === href : pathname.startsWith(href);
         return (

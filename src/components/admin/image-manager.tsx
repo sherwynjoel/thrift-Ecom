@@ -173,11 +173,11 @@ export function ImageManager({ productId, images, colorNames }: { productId: str
                         e.preventDefault();
                         if (e.currentTarget.value !== img.alt) save(img, { alt: e.currentTarget.value });
                       }}
-                      className="h-8 min-w-0 flex-1 rounded-md border border-border bg-surface px-2"
+                      className="h-11 min-w-0 flex-1 rounded-md border border-border bg-surface px-2 lg:h-8"
                     />
                     {savedAltId === img.id && <span className="shrink-0 text-xs text-text-muted" data-testid="alt-saved">Saved</span>}
                   </div>
-                  <select value={img.colorName ?? ""} aria-label="Color tag" onChange={(e) => save(img, { colorName: e.target.value || null })} className="h-8 rounded-md border border-border bg-surface px-2">
+                  <select value={img.colorName ?? ""} aria-label="Color tag" onChange={(e) => save(img, { colorName: e.target.value || null })} className="h-11 rounded-md lg:h-8 border border-border bg-surface px-2">
                     <option value="">All colors</option>
                     {orphanColor && <option value={orphanColor}>{orphanColor} (missing)</option>}
                     {colorNames.map((c) => <option key={c} value={c}>{c}</option>)}

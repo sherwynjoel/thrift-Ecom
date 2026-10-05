@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { SlipDocument } from "@/components/print/slip-document";
 import { db } from "@/server/db";
 import { resetDb } from "../helpers/db";
 import { createDesignRow, createProduct, createUser } from "../helpers/fixtures";
@@ -94,6 +97,9 @@ describe("custom lines in checkout and orders", () => {
     expect(absoluteUrl("https://cdn.example/x.png")).toBe("https://cdn.example/x.png");
     const invoice = invoiceFromOrder(order, await getSettings());
     expect(invoice.lines[0].description).toContain("custom print");
+    const slip = renderToStaticMarkup(createElement(SlipDocument, { order, settings: await getSettings(), last: true }));
+    expect(slip).toContain('src="/api/uploads/designs/previews/f.png"');
+    expect(slip).toContain('src="/api/uploads/designs/previews/b.png"');
   });
 
   it("reuses the open order for an identical retry and supersedes it when the design line changes", async () => {
@@ -147,7 +153,7 @@ describe("custom lines in checkout and orders", () => {
   });
 
   it("keys checkout lines by variant and design", () => {
-    const line = { variantId: "v1", productName: "T", productSlug: "t", imageUrl: null, size: "M", colorName: "Black", unitPricePaise: 54900, quantity: 1, lineTotalPaise: 54900, designId: null, customLabel: null };
+    const line = { variantId: "v1", productId: "p1", productName: "T", productSlug: "t", imageUrl: null, size: "M", colorName: "Black", unitPricePaise: 54900, quantity: 1, lineTotalPaise: 54900, designId: null, customLabel: null };
     expect(checkoutFormKey({ lines: [line, { ...line, designId: "d1" }] })).not.toBe(checkoutFormKey({ lines: [line, { ...line, designId: "d2" }] }));
   });
 });

@@ -10,7 +10,7 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
   if (!token) {
     return (
       <AuthCard title="Reset password" subtitle="This link is missing its token.">
-        <Link href="/forgot-password" className="text-sm underline-offset-4 hover:underline">Request a new link</Link>
+        <Link href="/forgot-password" className="inline-flex min-h-11 items-center text-sm underline-offset-4 hover:underline">Request a new link</Link>
       </AuthCard>
     );
   }

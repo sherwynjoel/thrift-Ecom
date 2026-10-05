@@ -4,13 +4,14 @@ import { Badge } from "@/components/ui/badge";
 import type { ProductCard as Card } from "@/server/services/catalog";
 import { ColorDots } from "./color-dots";
 import { Price } from "./price";
+import { WishlistButton } from "./wishlist-button";
 
 const FIT_LABEL: Record<Card["fit"], string> = { OVERSIZED: "Oversized", REGULAR: "Regular", RELAXED: "Relaxed" };
 
 export function ProductCard({ product, priority = false }: { product: Card; priority?: boolean }) {
   const [front, back] = product.images;
   return (
-    <article className="group" data-testid="product-card">
+    <article className="group relative" data-testid="product-card">
       <Link href={`/products/${product.slug}`} className="block">
         <div className="relative aspect-[4/5] overflow-hidden rounded-sm bg-surface">
           {front && <Image src={front.url} alt={front.alt} fill sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw" priority={priority} className="object-cover transition-transform duration-700 group-hover:scale-[1.03]" />}
@@ -28,6 +29,7 @@ export function ProductCard({ product, priority = false }: { product: Card; prio
           <ColorDots colors={product.colors} />
         </div>
       </Link>
+      <WishlistButton productId={product.id} productName={product.name} className="absolute right-1 top-1 z-10 bg-bg/70 backdrop-blur hover:bg-bg" />
     </article>
   );
 }

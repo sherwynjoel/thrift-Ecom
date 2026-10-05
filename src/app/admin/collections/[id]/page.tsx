@@ -18,10 +18,10 @@ export default async function EditCollectionPage({ params }: { params: Promise<{
   });
   return (
     <div className="space-y-6">
-      <Link href="/admin/collections" className="text-sm text-text-muted hover:text-text">← Collections</Link>
+      <Link href="/admin/collections" className="inline-flex min-h-11 items-center text-sm text-text-muted hover:text-text">← Collections</Link>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-5xl">{collection.name}</h1>
-        {collection.isActive && <Link href={`/collections/${collection.slug}`} target="_blank" className="text-sm underline-offset-4 hover:underline">View on store ↗</Link>}
+        {collection.isActive && <Link href={`/collections/${collection.slug}`} target="_blank" className="inline-flex min-h-11 items-center text-sm underline-offset-4 hover:underline">View on store ↗</Link>}
       </div>
       <CollectionEditor key={collection.id} collection={collection} />
       <HeroUploader collectionId={collection.id} heroImageUrl={collection.heroImageUrl} />

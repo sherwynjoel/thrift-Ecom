@@ -23,8 +23,9 @@ test("mobile checkout at 390×844: no sideways scroll, reachable pay bar, comple
   await expect(page.getByTestId("order-success")).toBeVisible();
   expect(await hasNoHorizontalScroll(page)).toBe(true);
 
-  // Base UI's Button renders this <a> with role="button", so match the anchor by its href and text.
-  await page.locator('a[href^="/account/orders/"]', { hasText: "View order" }).click();
+  // Links styled as buttons keep the link role.
+  await expect(page.getByRole("link", { name: "Keep shopping" })).toBeVisible();
+  await page.getByRole("link", { name: "View order" }).click();
   await expect(page.getByTestId("order-stepper")).toBeVisible();
   expect(await hasNoHorizontalScroll(page)).toBe(true);
 });

@@ -10,6 +10,8 @@ describe("uploads route", () => {
   beforeAll(() => {
     mkdirSync(join(LOCAL_UPLOAD_ROOT, "test-route"), { recursive: true });
     writeFileSync(join(LOCAL_UPLOAD_ROOT, "test-route", "ok.png"), new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    mkdirSync(join(LOCAL_UPLOAD_ROOT, "designs", "print"), { recursive: true });
+    writeFileSync(join(LOCAL_UPLOAD_ROOT, "designs", "print", "route-test.png"), new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
   });
 
   it("serves allowed files with hardened headers", async () => {
@@ -24,5 +26,11 @@ describe("uploads route", () => {
     expect((await call(["..", "..", "package.json"])).status).toBe(404);
     expect((await call(["test-route", "x.svg"])).status).toBe(404);
     expect((await call(["test-route", "missing.png"])).status).toBe(404);
+  });
+
+  it("never serves print files (admin download route only)", async () => {
+    expect((await call(["designs", "print", "route-test.png"])).status).toBe(404);
+    expect((await call(["Designs", "Print", "route-test.png"])).status).toBe(404);
+    expect((await call(["designs", "x", "..", "print", "route-test.png"])).status).toBe(404);
   });
 });

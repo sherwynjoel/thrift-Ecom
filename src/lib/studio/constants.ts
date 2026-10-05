@@ -16,9 +16,13 @@ export const MAX_TEXT_CHARS = 200;
 const MB = 1024 * 1024;
 export const MAX_DESIGN_ASSET_BYTES = 10 * MB;
 export const MAX_PREVIEW_BYTES = 3 * MB;
-export const MAX_PRINT_BYTES = 25 * MB;
-export const MAX_DESIGN_UPLOAD_BYTES = 30 * MB;
+/** A full-size photo print at 3600 × 4800 can pass 35 MB; bigger prints fall back to 3072 × 4096 on the client. */
+export const MAX_PRINT_BYTES = 40 * MB;
+/** Two prints and two previews (2 × 40 + 2 × 3 MB) plus headroom. */
+export const MAX_DESIGN_UPLOAD_BYTES = 90 * MB;
 export const DESIGN_ASSET_PREFIX = "designs/assets";
+/** Print files live under this key prefix and are only ever served to admins (print queue download). */
+export const DESIGN_PRINT_PREFIX = "designs/print/";
 export const DPI_WARN = 150;
 export const DPI_BLURRY = 100;
 

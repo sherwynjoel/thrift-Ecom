@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { ZodType } from "zod";
 import { randomBytes } from "node:crypto";
-import { RateLimitedError, toHttp, UnauthorizedError, ValidationError } from "@/server/errors";
+import { RateLimitedError, ServiceUnavailableError, toHttp, UnauthorizedError, ValidationError } from "@/server/errors";
 import { verifyApiToken } from "@/server/api-token";
 import { getUserById, type PublicUser } from "@/server/services/auth";
 import type { CartRef } from "@/server/services/cart";
@@ -27,7 +27,7 @@ export function clientIp(req: NextRequest): string {
 function errorResponse(err: unknown): Response {
   const { status, body } = toHttp(err);
   const res = NextResponse.json(body, { status });
-  if (err instanceof RateLimitedError) res.headers.set("Retry-After", String(err.retryAfterSec));
+  if (err instanceof RateLimitedError || err instanceof ServiceUnavailableError) res.headers.set("Retry-After", String(err.retryAfterSec));
   return res;
 }
 

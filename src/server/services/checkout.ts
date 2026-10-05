@@ -15,10 +15,10 @@ import { getCustomFees, getSettings } from "@/server/services/settings";
 import { designFileUrl } from "@/server/services/designs";
 import { priceCart, type PriceResult } from "@/lib/pricing";
 import { variantImageUrl } from "@/lib/variant-image";
-import { customFeesOf, customPrintLabel, customUnitPricePaise, designSides, type CustomFees } from "@/lib/custom-pricing";
+import { bagLineKey, customFeesOf, customPrintLabel, customUnitPricePaise, designSides, type CustomFees } from "@/lib/custom-pricing";
 
 export interface CheckoutLineView {
-  variantId: string; productName: string; productSlug: string; imageUrl: string | null; size: string; colorName: string;
+  variantId: string; productId: string; productName: string; productSlug: string; imageUrl: string | null; size: string; colorName: string;
   unitPricePaise: number; quantity: number; lineTotalPaise: number;
   /** Custom-print lines: the design and its label ("Custom print: front + back"); null for plain lines. */
   designId: string | null; customLabel: string | null;
@@ -35,7 +35,7 @@ function toLineView(l: CheckoutLineRow, fees: CustomFees): CheckoutLineView {
   const unit = unitPriceOf(l, fees);
   const preview = designFileUrl(l.design?.frontPreviewKey ?? l.design?.backPreviewKey ?? null);
   return {
-    variantId: l.variantId, productName: p.name, productSlug: p.slug, imageUrl: preview ?? variantImageUrl(p.images, l.variant.colorName), size: l.variant.size,
+    variantId: l.variantId, productId: p.id, productName: p.name, productSlug: p.slug, imageUrl: preview ?? variantImageUrl(p.images, l.variant.colorName), size: l.variant.size,
     colorName: l.variant.colorName, unitPricePaise: unit, quantity: l.quantity, lineTotalPaise: unit * l.quantity,
     designId: l.designId, customLabel: l.design ? customPrintLabel(designSides(l.design)) : null,
   };
@@ -74,12 +74,7 @@ export function limitCouponQuotes(userId: string): void {
  * note — a wrong-address risk, not just a lost draft (see N1).
  */
 export function checkoutFormKey(view: Pick<CheckoutView, "lines">): string {
-  return view.lines.map((l) => `${checkoutLineKey(l)}:${l.quantity}:${l.unitPricePaise}`).join(",");
-}
-
-/** Unique per bag line: one plain line per variant, one line per design. */
-function checkoutLineKey(l: Pick<CheckoutLineView, "variantId" | "designId">): string {
-  return `${l.variantId}|${l.designId ?? ""}`;
+  return view.lines.map((l) => `${bagLineKey(l.variantId, l.designId)}:${l.quantity}:${l.unitPricePaise}`).join(",");
 }
 
 export async function quoteForUser(userId: string, couponCode: string | null): Promise<PriceResult> {

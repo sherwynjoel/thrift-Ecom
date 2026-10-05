@@ -12,7 +12,7 @@ const CHART: Record<Fit, { size: string; chest: number; length: number }[]> = {
 export function SizeGuide({ fit }: { fit: Fit }) {
   return (
     <Dialog>
-      <DialogTrigger className="text-sm text-text-muted underline-offset-4 hover:underline" data-testid="size-guide">Size guide</DialogTrigger>
+      <DialogTrigger className="-my-3 inline-flex min-h-11 items-center px-1 text-sm text-text-muted underline-offset-4 hover:underline" data-testid="size-guide">Size guide</DialogTrigger>
       <DialogContent className="bg-bg">
         <DialogTitle className="font-display text-2xl uppercase">Size guide (inches)</DialogTitle>
         <table className="w-full text-sm">

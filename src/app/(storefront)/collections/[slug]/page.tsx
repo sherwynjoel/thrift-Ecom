@@ -4,6 +4,8 @@ import { FilterRail } from "@/components/storefront/filter-rail";
 import { LoadMore } from "@/components/storefront/load-more";
 import { ProductGrid } from "@/components/storefront/product-grid";
 import { SortSelect } from "@/components/storefront/sort-select";
+import { BRAND } from "@/config/brand";
+import { collectionMetadata } from "@/lib/seo";
 import { NotFoundError } from "@/server/errors";
 import { getCollectionBySlug, getFacets, listProducts } from "@/server/services/catalog";
 import { parseProductQuery } from "@/lib/validation/catalog";
@@ -22,7 +24,7 @@ async function load(slug: string) {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const collection = await load(slug);
-  return { title: collection.name, description: collection.description || undefined };
+  return collectionMetadata(collection, BRAND.name);
 }
 
 export default async function CollectionPage({ params, searchParams }: Props) {
@@ -45,7 +47,7 @@ export default async function CollectionPage({ params, searchParams }: Props) {
         <SortSelect />
       </header>
       <div className="flex gap-10">
-        <FilterRail facets={facets} />
+        <FilterRail facets={facets} resultCount={products.total} />
         <section className="min-w-0 flex-1">
           <ProductGrid products={products.items} emptyMessage="No tees match those filters." />
           <LoadMore key={endpoint} endpoint={endpoint} initialPage={products.page} hasMore={products.hasMore} />

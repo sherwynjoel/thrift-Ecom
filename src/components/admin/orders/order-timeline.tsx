@@ -1,5 +1,5 @@
 import {
-  AlertTriangle, ArrowRight, Circle, Clock, IndianRupee, Mail, MailWarning, Receipt, StickyNote, Truck, Undo2, XCircle, type LucideIcon,
+  AlertTriangle, ArrowRight, Circle, Clock, IndianRupee, Mail, MailWarning, Printer, Receipt, StickyNote, Truck, Undo2, XCircle, type LucideIcon,
 } from "lucide-react";
 import { formatDateTimeIst } from "@/lib/dates";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,7 @@ const ICONS: Record<string, { icon: LucideIcon; tone?: string }> = {
   PAYMENT_FAILED: { icon: XCircle, tone: "text-danger" },
   EXPIRED: { icon: Clock },
   REFUNDED: { icon: Undo2 },
+  PRINTED: { icon: Printer },
 };
 
 export function OrderTimeline({ events }: { events: AdminOrderEvent[] }) {

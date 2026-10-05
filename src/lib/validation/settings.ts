@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { GST_STATE_CODES, INDIA_STATES } from "@/lib/india-states";
-import { blankToNull, phoneSchema } from "@/lib/validation/common";
+import { blankToNull, optionalText, phoneSchema } from "@/lib/validation/common";
+import { safeHrefSchema } from "@/lib/safe-href";
 
 const GSTIN = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 const pct = z.number().int().min(0).max(28);
@@ -22,6 +23,10 @@ export const settingsInputSchema = z.object({
   abandonedCartEnabled: z.boolean(),
   customFrontFeePaise: z.number().int().min(0).max(1_000_000).optional(),
   customBackFeePaise: z.number().int().min(0).max(1_000_000).optional(),
+  announcementText: optionalText(140).optional(),
+  announcementHref: z.preprocess(blankToNull, safeHrefSchema.nullable()).optional(),
+  autoApproveReviews: z.boolean().optional(),
+  reviewRequestsEnabled: z.boolean().optional(),
 }).superRefine((v, ctx) => {
   if (v.gstRateLowPct > v.gstRateHighPct) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["gstRateLowPct"], message: "The lower-slab rate can't be higher than the rate above the threshold" });

@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Info, Loader2 } from "lucide-react";
+import { Info, Loader2, RotateCw } from "lucide-react";
 import { colorsOf, defaultColor, sizesFor } from "@/lib/variant-matrix";
-import { PRINT_AREA, CANVAS_HEIGHT, CANVAS_WIDTH } from "@/lib/studio/constants";
+import { PRINT_AREA, CANVAS_HEIGHT, CANVAS_WIDTH, MAX_OBJECTS_PER_SIDE } from "@/lib/studio/constants";
+import { dpiLevel, dpiMessage } from "@/lib/studio/dpi";
 import { EMPTY_SIDE, type SideJson } from "@/lib/studio/canvas-json";
 import { isDarkHex } from "@/lib/studio/shirt";
 import { cn } from "@/lib/utils";
@@ -25,7 +26,7 @@ import { SideToggle } from "./side-toggle";
 import { StudioPanel, type StudioTab } from "./studio-panel";
 import { TextPanel } from "./text-panel";
 import { UploadPanel } from "./upload-panel";
-import { useStudioCanvas } from "./use-studio-canvas";
+import { STUDIO_ROOT_ATTR, useStudioCanvas } from "./use-studio-canvas";
 
 export interface StudioInitialDesign { designId: string; colorName: string; front: SideJson; back: SideJson }
 export interface StudioProps { product: StudioProduct; initialColor: string | null; initialDesign: StudioInitialDesign | null }
@@ -91,6 +92,9 @@ export function Studio({ product, initialColor, initialDesign }: StudioProps) {
   const api = useStudioCanvas({ families: STUDIO_FONT_FAMILIES, initial, inkHex });
   const sides = { front: api.counts.front > 0, back: api.counts.back > 0 };
   const empty = api.counts[api.side] === 0;
+  // One polite summary for screen readers; it changes only when the quality level does (not on every scaling frame).
+  const dpiLevelNow = api.selectedDpi === null ? "ok" : dpiLevel(api.selectedDpi);
+  const dpiAnnouncement = dpiLevelNow === "ok" ? "" : dpiMessage(dpiLevelNow);
 
   async function add() {
     if (!chosen) {
@@ -133,6 +137,10 @@ export function Studio({ product, initialColor, initialDesign }: StudioProps) {
   }
 
   async function upload(file: File) {
+    if (api.layers.length >= MAX_OBJECTS_PER_SIDE) {
+      toast.error(`Use at most ${MAX_OBJECTS_PER_SIDE} layers per side`);
+      return;
+    }
     setUploading(true);
     try {
       await api.addImage((await uploadAsset(file)).url);
@@ -150,6 +158,7 @@ export function Studio({ product, initialColor, initialDesign }: StudioProps) {
       data-ready={api.ready ? "true" : "false"}
       data-object-count={api.counts[api.side]}
       data-lenis-prevent
+      {...{ [STUDIO_ROOT_ATTR]: "" }}
       className="relative grid gap-4 md:grid-cols-[minmax(0,1fr)_380px] md:gap-8"
       style={{ "--sheet-h": `${sheetHeight}px` } as React.CSSProperties}
     >
@@ -190,7 +199,7 @@ export function Studio({ product, initialColor, initialDesign }: StudioProps) {
           <div className={cn(focus && "max-md:flex max-md:min-w-0 max-md:flex-1 max-md:items-center max-md:self-stretch max-md:[container-type:size]")}>
             <div
               className={cn(
-                "relative -mx-4 aspect-[4/5] touch-none select-none overflow-hidden bg-surface sm:mx-0 sm:rounded-md sm:border sm:border-border",
+                "relative -mx-4 aspect-[4/5] touch-pan-y select-none overflow-hidden bg-surface sm:mx-0 sm:rounded-md sm:border sm:border-border",
                 focus && "max-md:mx-auto max-md:w-[min(100cqw,80cqh)] max-md:rounded-md max-md:border max-md:border-border",
               )}
               data-testid="studio-stage"
@@ -205,18 +214,28 @@ export function Studio({ product, initialColor, initialDesign }: StudioProps) {
                   data-testid="studio-empty-hint"
                 >
                   <span className="font-display text-base uppercase leading-none tracking-wide sm:text-xl">Your design here</span>
-                  <span className="text-[10px] leading-tight sm:text-xs">12 × 16 in print area</span>
+                  <span className="text-xs leading-tight">12 × 16 in print area</span>
                 </div>
               )}
               <div ref={api.hostRef} className="absolute inset-0" data-testid="studio-surface">
                 <canvas ref={api.canvasElRef} data-testid="studio-canvas" aria-label={`Design canvas, ${api.side}`} />
               </div>
-              {!api.ready && (
+              {!api.ready && !api.failed && (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden>
                   <Loader2 className="size-8 text-text-muted motion-safe:animate-spin" />
                 </div>
               )}
-              <p className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-bg/70 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-text-muted backdrop-blur">
+              {api.failed && (
+                <div role="alert" className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-bg/80 p-6 text-center backdrop-blur-sm" data-testid="studio-error">
+                  <p className="font-display text-2xl uppercase">The editor could not load</p>
+                  <p className="text-sm text-text-muted">Check your connection and try again.</p>
+                  <button type="button" onClick={api.retry} className="inline-flex h-11 items-center gap-2 rounded-md bg-brand px-5 font-display text-lg tracking-wide text-brand-ink">
+                    <RotateCw aria-hidden className="size-4" />
+                    Retry
+                  </button>
+                </div>
+              )}
+              <p className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-bg/70 px-3 py-1 text-xs uppercase tracking-[0.2em] text-text-muted backdrop-blur">
                 {api.side === "front" ? "Front" : "Back"} · {color}
               </p>
             </div>
@@ -225,6 +244,7 @@ export function Studio({ product, initialColor, initialDesign }: StudioProps) {
           {focus && <DpiChip dpi={api.selectedDpi} className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap" />}
         </div>
         {!focus && <ObjectToolbar api={api} />}
+        <p role="status" aria-live="polite" className="sr-only" data-testid="dpi-status">{dpiAnnouncement}</p>
       </section>
       <StudioPanel
         sheetRef={sheetRef}

@@ -24,10 +24,13 @@ export default defineConfig({
     env: { NEXT_PUBLIC_SITE_URL: "http://localhost:3001", NEXT_DIST_DIR: ".next-e2e", PAYMENT_PROVIDER: "mock" },
   },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"] }, testIgnore: /checkout-mobile/ },
+    { name: "desktop", use: { ...devices["Desktop Chrome"] }, testIgnore: /(checkout|studio)-mobile|mobile-layout/ },
     { name: "mobile", use: { ...devices["Pixel 7"] }, testMatch: /home|product-cart|admin-mobile/ },
     { name: "reduced-motion", use: { ...devices["Desktop Chrome"], reducedMotion: "reduce" }, testMatch: /home/ },
     // Chromium with touch at 390x844, the phone size the checkout spec targets.
     { name: "mobile-checkout", use: { ...devices["Pixel 7"], viewport: { width: 390, height: 844 } }, testMatch: /checkout-mobile/ },
+    // Every route at the smallest common Android width: no sideways scroll, tap targets >= 44 px.
+    { name: "mobile-360", use: { ...devices["Pixel 7"], viewport: { width: 360, height: 740 } }, testMatch: /mobile-layout/ },
+    { name: "mobile-studio", use: { ...devices["Pixel 7"], viewport: { width: 390, height: 844 } }, testMatch: /studio-mobile/ },
   ],
 });

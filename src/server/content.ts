@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const ROOT = join(process.cwd(), "content", "pages");
@@ -14,5 +14,14 @@ export async function readPage(slug: string): Promise<{ title: string; body: str
     return { title, body };
   } catch {
     return null;
+  }
+}
+
+/** Slugs of every static content page (for the sitemap), sorted. */
+export async function listPageSlugs(): Promise<string[]> {
+  try {
+    return (await readdir(ROOT)).filter((f) => f.endsWith(".md")).map((f) => f.slice(0, -3)).filter((s) => /^[a-z0-9-]+$/.test(s)).sort();
+  } catch {
+    return [];
   }
 }

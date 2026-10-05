@@ -4,7 +4,7 @@ import { getStorage } from "@/server/adapters/storage";
 import { MAX_QTY_PER_LINE } from "@/lib/catalog-types";
 import { variantImageUrl } from "@/lib/variant-image";
 import { customPrintLabel, customUnitPricePaise, designSides, NO_CUSTOM_FEES, type CustomFees } from "@/lib/custom-pricing";
-import { NotFoundError, OutOfStockError, ValidationError } from "@/server/errors";
+import { ConflictError, NotFoundError, OutOfStockError, ValidationError } from "@/server/errors";
 import { getCustomFees } from "@/server/services/settings";
 
 export type CartRef = { userId: string } | { guestToken: string };
@@ -29,6 +29,9 @@ export interface CartView {
   itemCount: number;
 }
 
+/** Custom-printed lines one bag can hold: bounds the files a guest bag can pin (purge-designs keeps designs in bags). */
+export const MAX_CUSTOM_LINES = 10;
+
 export const EMPTY_CART: CartView = { id: null, items: [], subtotalPaise: 0, itemCount: 0 };
 
 const designSelect = { id: true, frontPreviewKey: true, backPreviewKey: true, frontPrintKey: true, backPrintKey: true } as const;
@@ -49,7 +52,8 @@ function whereRef(ref: CartRef): Prisma.CartWhereUniqueInput {
   return "userId" in ref ? { userId: ref.userId } : { guestToken: ref.guestToken };
 }
 
-export function designOwnerWhere(ref: CartRef): Prisma.DesignWhereInput {
+/** Where-filter for rows a shopper owns (designs, uploaded studio images): their user id, or their guest token while signed out. */
+export function ownedBy(ref: CartRef): { userId: string } | { userId: null; cartToken: string } {
   return "userId" in ref ? { userId: ref.userId } : { userId: null, cartToken: ref.guestToken };
 }
 
@@ -110,7 +114,7 @@ async function qtyInOtherLines(cartId: string, variantId: string, excludeItemId:
 }
 
 async function assertDesignFits(ref: CartRef, designId: string, variant: { productId: string; colorName: string }): Promise<void> {
-  const d = await db.design.findFirst({ where: { id: designId, ...designOwnerWhere(ref) }, select: { productId: true, colorName: true } });
+  const d = await db.design.findFirst({ where: { id: designId, ...ownedBy(ref) }, select: { productId: true, colorName: true } });
   if (!d) throw new NotFoundError("Design");
   if (d.productId !== variant.productId || d.colorName !== variant.colorName) {
     throw new ValidationError({ designId: ["This design was made for a different tee or color"] });
@@ -143,6 +147,10 @@ async function addItemOnce(ref: CartRef, variantId: string, quantity: number, op
     ? await db.cartItem.findUnique({ where: { cartId_designId: { cartId, designId } } })
     : await db.cartItem.findFirst({ where: { cartId, variantId, designId: null } });
   if (existing && existing.variantId !== variantId) throw new ValidationError({ designId: ["This design is already in your bag in another size"] });
+  // ponytail: count-then-insert, two concurrent adds can reach 11; a hard cap would need a cart row lock.
+  if (designId && !existing && (await db.cartItem.count({ where: { cartId, designId: { not: null } } })) >= MAX_CUSTOM_LINES) {
+    throw new ConflictError(`Your bag can hold up to ${MAX_CUSTOM_LINES} custom designs`);
+  }
   const next = (existing?.quantity ?? 0) + quantity;
   if (next > MAX_QTY_PER_LINE) throw new ValidationError({ quantity: [`You can add at most ${MAX_QTY_PER_LINE} of one item`] });
   const elsewhere = await qtyInOtherLines(cartId, variantId, existing?.id ?? null);

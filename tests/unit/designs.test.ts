@@ -76,6 +76,19 @@ describe("designs service", () => {
     await expect(createDesignAndAddToCart({ guestToken: "g" }, input(ids, { front: side([text], { print: fakePng(3072, 4096) }) }))).resolves.toMatchObject({ designId: expect.any(String) });
   });
 
+  it("accepts photo-sized prints up to 40 MB each (both sides) and refuses a bigger one", async () => {
+    const ids = await blank();
+    const photo = (bytes: number) => {
+      const b = new Uint8Array(bytes);
+      b.set(fakePng(3600, 4800));
+      return b;
+    };
+    const MB = 1024 * 1024;
+    const both = input(ids, { front: side([text], { print: photo(36 * MB) }), back: side([text], { print: photo(40 * MB) }) });
+    await expect(createDesignAndAddToCart({ guestToken: "g" }, both)).resolves.toMatchObject({ designId: expect.any(String) });
+    await expect(createDesignAndAddToCart({ guestToken: "g" }, input(ids, { front: side([text], { print: photo(40 * MB + 1) }) }))).rejects.toBeInstanceOf(ValidationError);
+  });
+
   it("validates rights, emptiness, file formats, sizes and image origins", async () => {
     const ids = await blank();
     const g = { guestToken: "g1" };

@@ -13,6 +13,12 @@ export function loadFabric(): Promise<FabricModule> {
   return pending;
 }
 
+const FACES = ["", "bold ", "italic ", "italic bold "];
+/** Loads every face (regular, bold, italic, bold italic) the studio can draw for these fonts. */
+export async function loadFontFaces(ids: StudioFontId[], families: Record<StudioFontId, string>): Promise<void> {
+  await Promise.all(ids.flatMap((id) => FACES.map((v) => document.fonts.load(`${v}48px ${families[id]}`).catch(() => undefined))));
+}
+
 declare module "fabric" {
   interface FabricObject { data?: StudioObjectData }
 }

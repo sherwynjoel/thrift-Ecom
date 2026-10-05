@@ -4,7 +4,7 @@ import { db } from "@/server/db";
 import { getStorage } from "@/server/adapters/storage";
 import { NotFoundError, ValidationError } from "@/server/errors";
 import { storeImage, uploadKeyFromUrl, validateImage } from "@/server/uploads";
-import { addItem, designOwnerWhere, type CartRef, type CartView } from "@/server/services/cart";
+import { addItem, ownedBy, type CartRef, type CartView } from "@/server/services/cart";
 import { getCustomFees } from "@/server/services/settings";
 import { MAX_QTY_PER_LINE } from "@/lib/catalog-types";
 import type { CustomFees } from "@/lib/custom-pricing";
@@ -61,11 +61,6 @@ export async function getStudioProduct(slug: string): Promise<StudioProduct> {
     variants: p.variants.map((v) => ({ id: v.id, size: v.size, colorName: v.colorName, colorHex: v.colorHex, stock: v.stock, pricePaise: v.pricePaise ?? p.basePricePaise })),
     fees: await getCustomFees(),
   };
-}
-
-/** Uploaded studio images belong to the uploader; only they can use them in a design. */
-export function assetOwnerWhere(ref: CartRef): Prisma.DesignAssetWhereInput {
-  return "userId" in ref ? { userId: ref.userId } : { userId: null, cartToken: ref.guestToken };
 }
 
 function ownerData(ref: CartRef): { userId: string | null; cartToken: string | null } {
@@ -140,7 +135,7 @@ export async function createDesignAndAddToCart(ref: CartRef, input: CreateDesign
   }
   if (totalBytes > MAX_DESIGN_UPLOAD_BYTES) throw new ValidationError({ design: ["This design is too large to upload. Try smaller images."] });
   const keys = [...assetKeys];
-  if (keys.length && (await db.designAsset.count({ where: { key: { in: keys }, ...assetOwnerWhere(ref) } })) !== keys.length) {
+  if (keys.length && (await db.designAsset.count({ where: { key: { in: keys }, ...ownedBy(ref) } })) !== keys.length) {
     throw new ValidationError({ design: [ASSET_GONE] });
   }
 
@@ -165,7 +160,7 @@ export async function createDesignAndAddToCart(ref: CartRef, input: CreateDesign
       const created = await tx.design.create({ data, select: { id: true } });
       // Marking the assets as used keeps the purge off them; a row it deleted since the check above fails the design.
       if (keys.length) {
-        const marked = await tx.designAsset.updateMany({ where: { key: { in: keys }, ...assetOwnerWhere(ref) }, data: { designId: created.id } });
+        const marked = await tx.designAsset.updateMany({ where: { key: { in: keys }, ...ownedBy(ref) }, data: { designId: created.id } });
         if (marked.count !== keys.length) throw new ValidationError({ design: [ASSET_GONE] });
       }
       return created;
@@ -183,7 +178,7 @@ export async function createDesignAndAddToCart(ref: CartRef, input: CreateDesign
 }
 
 export async function getDesignForOwner(ref: CartRef, id: string): Promise<DesignView> {
-  const d = await db.design.findFirst({ where: { id, ...designOwnerWhere(ref) } });
+  const d = await db.design.findFirst({ where: { id, ...ownedBy(ref) } });
   if (!d) throw new NotFoundError("Design");
   return {
     id: d.id, productId: d.productId, colorName: d.colorName, front: toSideJson(d.frontJson), back: toSideJson(d.backJson),

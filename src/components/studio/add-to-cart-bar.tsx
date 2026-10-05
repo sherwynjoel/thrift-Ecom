@@ -28,7 +28,7 @@ export function AddToCartBar({ price, rights, onRights, onAdd, busy, status, com
           {busy ? "Adding…" : "Add to cart"}
         </Button>
       </div>
-      <p role="status" aria-live="polite" className="min-h-0 text-xs text-text-muted empty:hidden" data-testid="studio-status">{status ?? ""}</p>
+      <p role="status" aria-live="polite" className={cn("text-xs text-text-muted", !status && "sr-only")} data-testid="studio-status">{status ?? ""}</p>
     </div>
   );
 }

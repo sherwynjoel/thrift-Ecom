@@ -3,12 +3,13 @@ import { notFound, redirect } from "next/navigation";
 import { mockPayAction } from "@/app/(storefront)/checkout/actions";
 import { Button } from "@/components/ui/button";
 import { formatPaise } from "@/lib/money";
+import { NO_INDEX } from "@/lib/seo";
 import { auth } from "@/server/auth";
 import { NotFoundError } from "@/server/errors";
 import { isMockPayments } from "@/server/payments";
 import { getOwnedOrderRef } from "@/server/services/checkout";
 
-export const metadata: Metadata = { title: "Test payment", robots: { index: false } };
+export const metadata: Metadata = { title: "Test payment", robots: NO_INDEX };
 
 export default async function MockPayPage({ params }: { params: Promise<{ orderId: string }> }) {
   if (!isMockPayments()) notFound();

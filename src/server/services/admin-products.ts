@@ -8,7 +8,7 @@ import { productInputSchema, type ProductInput } from "@/lib/validation/admin";
 import { slugify, uniqueSlug } from "@/lib/slug";
 import type { Page } from "@/server/services/catalog";
 
-export interface AdminProductRow { id: string; slug: string; name: string; status: ProductStatus; imageUrl: string | null; variantCount: number; totalStock: number; basePricePaise: number; updatedAt: Date }
+export interface AdminProductRow { id: string; slug: string; name: string; status: ProductStatus; imageUrl: string | null; variantCount: number; totalStock: number; basePricePaise: number; updatedAt: Date; wishlistCount: number }
 export interface AdminVariant { id: string; sku: string; size: string; colorName: string; colorHex: string; pricePaise: number | null; stock: number; inCarts: number }
 export interface AdminImage { id: string; url: string; alt: string; colorName: string | null; sortOrder: number }
 export interface AdminProductDetail {
@@ -166,14 +166,35 @@ export async function updateProduct(id: string, input: unknown): Promise<{ id: s
   }
 }
 
+/**
+ * Deleting a product cascades to the designs made on it; their preview/print files go too, except files an order
+ * snapshot still links to (orders keep their design URLs). File cleanup is best-effort after the delete.
+ */
 export async function deleteProduct(id: string): Promise<void> {
-  const p = await db.product.findUnique({ where: { id }, select: { status: true, images: { select: { url: true } } } });
+  const p = await db.product.findUnique({
+    where: { id },
+    select: { status: true, images: { select: { url: true } }, designs: { select: { frontPreviewKey: true, backPreviewKey: true, frontPrintKey: true, backPrintKey: true } } },
+  });
   if (!p) throw new NotFoundError("Product");
   if (p.status === "ACTIVE") throw new ConflictError("Archive the product before deleting it");
   await db.product.delete({ where: { id } });
-  for (const { url } of p.images) {
-    const key = uploadKeyFromUrl(url);
-    if (key) await getStorage().delete(key).catch((err) => console.error("[admin-products] image cleanup failed", err));
+  const storage = getStorage();
+  const designKeys = p.designs.flatMap((d) => [d.frontPreviewKey, d.backPreviewKey, d.frontPrintKey, d.backPrintKey]).filter((k): k is string => k !== null);
+  const urls = designKeys.map((k) => storage.getPublicUrl(k));
+  const ordered = new Set<string>();
+  if (urls.length) {
+    const rows = await db.orderItem.findMany({
+      where: { OR: [{ designFrontPreviewUrl: { in: urls } }, { designBackPreviewUrl: { in: urls } }, { printFrontUrl: { in: urls } }, { printBackUrl: { in: urls } }] },
+      select: { designFrontPreviewUrl: true, designBackPreviewUrl: true, printFrontUrl: true, printBackUrl: true },
+    });
+    for (const r of rows) for (const u of [r.designFrontPreviewUrl, r.designBackPreviewUrl, r.printFrontUrl, r.printBackUrl]) if (u) ordered.add(u);
+  }
+  const keys = [
+    ...p.images.map(({ url }) => uploadKeyFromUrl(url)),
+    ...designKeys.filter((k) => !ordered.has(storage.getPublicUrl(k))),
+  ];
+  for (const key of keys) {
+    if (key) await storage.delete(key).catch((err) => console.error("[admin-products] file cleanup failed", key, err));
   }
 }
 
@@ -211,14 +232,14 @@ export async function listAdminProducts(args: { q?: string; status?: ProductStat
       orderBy: { updatedAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
-      include: { images: { orderBy: { sortOrder: "asc" }, take: 1 }, variants: { select: { stock: true } } },
+      include: { images: { orderBy: { sortOrder: "asc" }, take: 1 }, variants: { select: { stock: true } }, _count: { select: { wishlistItems: true } } },
     }),
   ]);
   return {
     items: rows.map((p) => ({
       id: p.id, slug: p.slug, name: p.name, status: p.status, imageUrl: p.images[0]?.url ?? null,
       variantCount: p.variants.length, totalStock: p.variants.reduce((s, v) => s + v.stock, 0),
-      basePricePaise: p.basePricePaise, updatedAt: p.updatedAt,
+      basePricePaise: p.basePricePaise, updatedAt: p.updatedAt, wishlistCount: p._count.wishlistItems,
     })),
     total, page, pageSize, hasMore: page * pageSize < total,
   };

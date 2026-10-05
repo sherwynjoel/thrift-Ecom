@@ -32,21 +32,21 @@ export default async function AdminProductsPage({ searchParams }: Props) {
           <h1 className="text-5xl">Products</h1>
           <p className="text-sm text-text-muted" data-testid="products-count">{result.total} products</p>
         </div>
-        <Button render={<Link href="/admin/products/new" />} nativeButton={false} data-testid="new-product">New product</Button>
+        <Button render={<Link href="/admin/products/new" />} nativeButton={false} className="h-11 px-4" data-testid="new-product">New product</Button>
       </div>
       <form className="flex flex-wrap gap-2" role="search">
-        <input name="q" defaultValue={q ?? ""} placeholder="Search name or slug" aria-label="Search products" className="h-9 w-64 rounded-md border border-border bg-surface px-3 text-sm" />
-        <select name="status" defaultValue={status ?? ""} aria-label="Status" className="h-9 rounded-md border border-border bg-surface px-3 text-sm">
+        <input name="q" defaultValue={q ?? ""} placeholder="Search name or slug" type="search" inputMode="search" enterKeyHint="search" autoComplete="off" aria-label="Search products" className="h-11 w-full min-w-0 sm:w-64 rounded-md border border-border bg-surface px-3 text-sm" />
+        <select name="status" defaultValue={status ?? ""} aria-label="Status" className="h-11 rounded-md border border-border bg-surface px-3 text-sm">
           <option value="">All statuses</option>
           {STATUSES.map((s) => <option key={s} value={s}>{s.toLowerCase()}</option>)}
         </select>
-        <Button type="submit" variant="secondary">Filter</Button>
+        <Button type="submit" variant="secondary" className="h-11 px-4">Filter</Button>
       </form>
       <ProductsTable rows={result.items} />
       <div className="flex items-center justify-between text-sm">
-        {page > 1 ? <Link href={link(page - 1)} className="hover:underline">← Previous</Link> : <span />}
+        {page > 1 ? <Link href={link(page - 1)} className="inline-flex min-h-11 items-center px-2 hover:underline">← Previous</Link> : <span />}
         <span className="text-text-muted">Page {page}</span>
-        {result.hasMore ? <Link href={link(page + 1)} className="hover:underline">Next →</Link> : <span />}
+        {result.hasMore ? <Link href={link(page + 1)} className="inline-flex min-h-11 items-center px-2 hover:underline">Next →</Link> : <span />}
       </div>
     </div>
   );

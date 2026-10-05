@@ -15,7 +15,8 @@ export function MagneticButton({ strength = 0.3, className, children, ...rest }:
   const reduced = useReducedMotionSafe();
 
   const onMove = (e: PointerEvent<HTMLButtonElement>) => {
-    if (reduced) return;
+    // Mouse only: touch and pen have no hover, so tracking would just jolt the button under the finger.
+    if (reduced || e.pointerType !== "mouse") return;
     const r = e.currentTarget.getBoundingClientRect();
     x.set((e.clientX - (r.left + r.width / 2)) * strength);
     y.set((e.clientY - (r.top + r.height / 2)) * strength);

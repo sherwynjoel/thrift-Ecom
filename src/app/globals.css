@@ -97,7 +97,7 @@
 /* ---- Base ---- */
 @layer base {
   * { @apply border-border; }
-  html { color-scheme: dark; scroll-behavior: auto; }
+  html { color-scheme: dark; scroll-behavior: auto; -webkit-tap-highlight-color: transparent; text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
   body { @apply bg-bg text-text font-sans antialiased; }
   /* Pages with a fixed mobile action bar (checkout) reserve room for it so the footer is never covered. */
   @media (width < 64rem) {
@@ -113,6 +113,11 @@
 /* ---- Utilities ---- */
 @utility container-x {
   @apply mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-10;
+}
+
+/* Fixed/sticky bottom bars: clear the iOS home indicator. */
+@utility pb-safe {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
 
 @utility text-balance {

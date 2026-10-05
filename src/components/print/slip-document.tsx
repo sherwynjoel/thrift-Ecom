@@ -49,10 +49,12 @@ export function SlipDocument({ order, settings, last = false }: { order: OrderVi
                   <span className="inline-block size-4 border-2 border-black" aria-hidden />
                 </td>
                 <td className="pr-2">
-                  {(i.designFrontPreviewUrl ?? i.imageUrl) && (
-                    // eslint-disable-next-line @next/next/no-img-element -- print view, no optimisation needed
-                    <img src={i.designFrontPreviewUrl ?? i.imageUrl ?? undefined} alt="" width={40} height={40} className="size-10 object-cover" />
-                  )}
+                  <div className="flex gap-1">
+                    {(isCustomItem(i) ? [i.designFrontPreviewUrl, i.designBackPreviewUrl] : [i.imageUrl]).filter((u): u is string => u !== null).map((u) => (
+                      // eslint-disable-next-line @next/next/no-img-element -- print view, no optimisation needed
+                      <img key={u} src={u} alt="" width={40} height={40} className="size-10 object-cover" data-testid="slip-item-image" />
+                    ))}
+                  </div>
                 </td>
                 <td className="pr-2">{i.productName}</td>
                 <td className="pr-2 font-bold">

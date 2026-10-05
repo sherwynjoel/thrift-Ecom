@@ -119,6 +119,23 @@ describe("placeOrder", () => {
     expect(cart).toHaveLength(1);
   });
 
+  it("supersedes instead of reusing when line prices change even though the total stays the same", async () => {
+    const user = await createUser();
+    const product = await createProduct({ variants: [{ size: "M", colorName: "Black", pricePaise: 59900 }, { size: "L", colorName: "Black", pricePaise: 59900 }] });
+    const [a, b] = product.variants;
+    const address = await createAddress(user.id, ADDRESS);
+    await addItem({ userId: user.id }, a.id, 1);
+    await addItem({ userId: user.id }, b.id, 1);
+    const first = await placeOrder(user.id, { addressId: address.id });
+    await db.productVariant.update({ where: { id: a.id }, data: { pricePaise: 60000 } });
+    await db.productVariant.update({ where: { id: b.id }, data: { pricePaise: 59800 } });
+    const second = await placeOrder(user.id, { addressId: address.id });
+    expect(second.amountPaise).toBe(first.amountPaise);
+    expect(second.orderId).not.toBe(first.orderId);
+    const items = await db.orderItem.findMany({ where: { orderId: second.orderId }, orderBy: { unitPricePaise: "asc" } });
+    expect(items.map((i) => i.unitPricePaise)).toEqual([59800, 60000]);
+  });
+
   it("resolves a concurrent same-user double-submit to a single order, decrementing stock once", async () => {
     const { user, variant, address } = await buyer({ qty: 2, stock: 5 });
     const [a, b] = await Promise.all([

@@ -17,7 +17,7 @@ import { POST as createDesign } from "@/app/api/designs/route";
 import { GET as getDesign } from "@/app/api/designs/[id]/route";
 import { POST as uploadAsset } from "@/app/api/designs/assets/route";
 import { parseDesignForm } from "@/server/design-form";
-import { MAX_SIDE_JSON_CHARS } from "@/lib/studio/constants";
+import { MAX_DESIGN_UPLOAD_BYTES, MAX_SIDE_JSON_CHARS } from "@/lib/studio/constants";
 
 const ctx = (params: Record<string, string> = {}) => ({ params: Promise.resolve(params) });
 /** Encodes the form like a browser does, with its Content-Length (the upload routes require it). */
@@ -33,7 +33,7 @@ async function req(path: string, init: { method?: string; body?: FormData; token
   }
   return new NextRequest(`http://localhost${path}`, { method: init.method ?? "GET", body, headers });
 }
-function designForm(productId: string, variantId: string, frontJson: unknown) {
+function designForm(productId: string, variantId: string, frontJson: unknown, print: Uint8Array<ArrayBuffer> = fakePng(3600, 4800)) {
   const f = new FormData();
   f.set("productId", productId);
   f.set("variantId", variantId);
@@ -41,7 +41,7 @@ function designForm(productId: string, variantId: string, frontJson: unknown) {
   f.set("rightsConfirmed", "true");
   f.set("frontJson", JSON.stringify(frontJson));
   f.set("frontPreview", new File([fakePng(800, 1000)], "front-preview.png", { type: "image/png" }));
-  f.set("frontPrint", new File([fakePng(3600, 4800)], "front-print.png", { type: "image/png" }));
+  f.set("frontPrint", new File([print], "front-print.png", { type: "image/png" }));
   return f;
 }
 
@@ -97,6 +97,16 @@ describe("design API", () => {
     expect((await createDesign(await req("/api/designs", { method: "POST", token: "g", body: many }), ctx())).status).toBe(400);
     expect(await db.designAsset.count()).toBe(0);
     expect(await db.design.count()).toBe(0);
+  });
+
+  it("takes a photo-sized design body and refuses one declared over the design limit", async () => {
+    const p = await createProduct({ isCustomizable: true });
+    const print = new Uint8Array(35 * 1024 * 1024);
+    print.set(fakePng(3600, 4800));
+    const text = { objects: [{ type: "Textbox", text: "HI", data: { kind: "text", fontId: "anton" } }] };
+    expect((await createDesign(await req("/api/designs", { method: "POST", token: "g", body: designForm(p.id, p.variants[0].id, text, print) }), ctx())).status).toBe(201);
+    const over = String(MAX_DESIGN_UPLOAD_BYTES + 2 * 1024 * 1024);
+    expect((await createDesign(await req("/api/designs", { method: "POST", token: "g", body: designForm(p.id, p.variants[0].id, text), contentLength: over }), ctx())).status).toBe(413);
   });
 
   it("records who uploaded an asset and mints a guest cookie for a new visitor", async () => {

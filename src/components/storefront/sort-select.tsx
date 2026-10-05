@@ -14,7 +14,7 @@ export function SortSelect() {
   const current = (params.get("sort") as ProductSort | null) ?? "featured";
   return (
     <Select value={current} onValueChange={(v) => router.replace(`${pathname}?${setParam(params, "sort", v === "featured" ? null : v)}`, { scroll: false })}>
-      <SelectTrigger className="w-48 bg-surface" aria-label="Sort by" data-testid="sort-select"><SelectValue /></SelectTrigger>
+      <SelectTrigger className="w-48 bg-surface data-[size=default]:h-11" aria-label="Sort by" data-testid="sort-select"><SelectValue /></SelectTrigger>
       <SelectContent>
         {PRODUCT_SORTS.map((s) => <SelectItem key={s} value={s}>{LABELS[s]}</SelectItem>)}
       </SelectContent>

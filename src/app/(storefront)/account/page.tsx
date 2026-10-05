@@ -7,11 +7,12 @@ import { PasswordForm } from "@/components/storefront/account/password-form";
 import { ProfileForm } from "@/components/storefront/account/profile-form";
 import { SignOutButton } from "@/components/storefront/account/sign-out-button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { NO_INDEX } from "@/lib/seo";
 import { auth } from "@/server/auth";
 import { getUserById, userHasPassword } from "@/server/services/auth";
 import { listOrdersForUser } from "@/server/services/orders";
 
-export const metadata: Metadata = { title: "Account" };
+export const metadata: Metadata = { title: "Account", robots: NO_INDEX };
 
 export default async function AccountPage() {
   const session = await auth();
@@ -32,18 +33,18 @@ export default async function AccountPage() {
         <SignOutButton />
       </div>
       <AccountNav />
-      <Tabs defaultValue="orders">
-        <TabsList className="bg-surface">
-          <TabsTrigger value="orders">Orders</TabsTrigger>
-          <TabsTrigger value="profile">Profile</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
+      <Tabs defaultValue="orders" className="mt-6">
+        <TabsList className="w-full bg-surface group-data-[orientation=horizontal]/tabs:h-auto sm:w-fit">
+          <TabsTrigger value="orders" className="min-h-11 px-4">Orders</TabsTrigger>
+          <TabsTrigger value="profile" className="min-h-11 px-4">Profile</TabsTrigger>
+          <TabsTrigger value="security" className="min-h-11 px-4">Security</TabsTrigger>
         </TabsList>
         <TabsContent value="orders" className="pt-6">
           {recentOrders.items.length === 0 ? (
             <div className="rounded-md border border-dashed border-border bg-surface p-8" data-testid="orders-empty">
               <p className="font-display text-2xl">No orders yet</p>
               <p className="mt-1 text-text-muted">Your orders and tracking links will live here.</p>
-              <Link href="/collections/new-drops" className="mt-4 inline-block text-sm underline-offset-4 hover:underline">Browse new drops</Link>
+              <Link href="/collections/new-drops" className="mt-4 inline-flex min-h-11 items-center text-sm underline-offset-4 hover:underline">Browse new drops</Link>
             </div>
           ) : (
             <div className="space-y-4">

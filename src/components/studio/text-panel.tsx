@@ -1,5 +1,6 @@
 "use client";
 
+import { onRadioGroupKeyDown, radioTabIndex } from "@/lib/roving-radio";
 import { useState } from "react";
 import { AlignCenter, AlignLeft, AlignRight, Bold, Italic, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -139,9 +140,9 @@ export function TextPanel({ selected, onAdd, onChange }: {
                 <Italic aria-hidden className="size-4" />
               </button>
             </div>
-            <div className="flex gap-2" role="radiogroup" aria-label="Alignment">
-              {ALIGN_OPTIONS.map(({ id, label, Icon }) => (
-                <button key={id} type="button" role="radio" aria-label={label} aria-checked={selected.align === id} onClick={() => void onChange({ align: id })} className={toggleClass(selected.align === id)}>
+            <div className="flex gap-2" role="radiogroup" aria-label="Alignment" onKeyDown={onRadioGroupKeyDown}>
+              {ALIGN_OPTIONS.map(({ id, label, Icon }, i) => (
+                <button key={id} type="button" role="radio" aria-label={label} aria-checked={selected.align === id} tabIndex={radioTabIndex(ALIGN_OPTIONS, i, (o) => o.id === selected.align)} onClick={() => void onChange({ align: id })} className={toggleClass(selected.align === id)}>
                   <Icon aria-hidden className="size-4" />
                 </button>
               ))}

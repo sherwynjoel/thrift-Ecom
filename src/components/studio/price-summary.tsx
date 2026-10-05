@@ -11,7 +11,7 @@ export function PriceSummary({ basePricePaise, fees, sides, className }: { baseP
   return (
     <div className={cn("min-w-0 text-sm", className)}>
       <p className="font-display text-2xl leading-none" data-testid="studio-price" aria-live="polite">{formatPaise(customUnitPricePaise(basePricePaise, sides, fees))}</p>
-      <p className="mt-1 truncate text-xs text-text-muted">{sides.front || sides.back ? parts.join(" + ") : "Add a design to the front or back"}</p>
+      <p className="mt-1 text-xs leading-snug text-text-muted">{sides.front || sides.back ? parts.join(" + ") : "Add a design to the front or back"}</p>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { runExpireOrders } from "./expire-orders";
 import { runLowStock } from "./low-stock";
 import { runPurgeDesigns } from "./purge-designs";
 import { runReconcilePayments } from "./reconcile-payments";
+import { runReviewRequest } from "./review-request";
 
 export const JOBS = {
   "expire-orders": runExpireOrders,
@@ -12,6 +13,7 @@ export const JOBS = {
   "abandoned-cart": runAbandonedCart,
   "reconcile-payments": (now: Date) => runReconcilePayments(now),
   "purge-designs": runPurgeDesigns,
+  "review-request": runReviewRequest,
 } as const;
 
 export type JobName = keyof typeof JOBS;
