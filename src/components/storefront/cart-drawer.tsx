@@ -11,11 +11,12 @@ export function CartDrawer({ itemCount, children }: { itemCount: number; childre
   useEffect(() => setOpen(false), [pathname, setOpen]);
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetContent side="right" className="flex w-full flex-col bg-bg sm:max-w-md" data-testid="cart-drawer">
-        <SheetHeader>
+      {/* Full screen on phones (data-[side] beats the sheet's default 3/4 width); a side panel from sm up. */}
+      <SheetContent side="right" className="flex flex-col gap-0 bg-bg pt-[env(safe-area-inset-top)] data-[side=right]:w-full data-[side=right]:sm:max-w-md" data-testid="cart-drawer">
+        <SheetHeader className="flex h-15 justify-center px-5 py-0 pr-14">
           <SheetTitle className="font-display text-2xl uppercase tracking-tight">Your bag ({itemCount})</SheetTitle>
         </SheetHeader>
-        <div className="flex flex-1 flex-col overflow-y-auto px-1">{children}</div>
+        <div className="flex flex-1 flex-col overflow-y-auto px-5">{children}</div>
       </SheetContent>
     </Sheet>
   );
