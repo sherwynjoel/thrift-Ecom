@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { BrandStory } from "@/components/storefront/home/brand-story";
 import { CustomizeTeaser } from "@/components/storefront/home/customize-teaser";
 import { FeaturedCollections } from "@/components/storefront/home/featured-collections";
-import { Hero } from "@/components/storefront/home/hero";
+import { SpecimenHero } from "@/components/storefront/home/specimen-hero";
 import { HeroBanners } from "@/components/storefront/home/hero-banners";
 import { NewDrops } from "@/components/storefront/home/new-drops";
 import { Ticker } from "@/components/storefront/home/ticker";
@@ -31,7 +31,10 @@ export default async function HomePage() {
           <HeroBanners banners={hero} />
         </>
       ) : (
-        <Hero />
+        <>
+          <h1 className="sr-only">{BRAND.name} — {BRAND.tagline}</h1>
+          <SpecimenHero />
+        </>
       )}
       <Ticker items={strip.length > 0 ? strip.map((b) => b.title) : undefined} />
       <FeaturedCollections />
