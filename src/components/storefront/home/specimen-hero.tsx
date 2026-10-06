@@ -5,7 +5,7 @@ import { BRAND } from "@/config/brand";
 // Self-hosted by next/font: the CSP only allows fonts from 'self', so the component's Google Fonts <link> stays off.
 const federant = Federant({ weight: "400", subsets: ["latin"], display: "swap" });
 
-// ponytail: trial hero. The old <Hero /> is untouched in hero.tsx; swap the import back in page.tsx to revert.
+// Cover frame only (sceneScroll 0): one screen, no scroll-driven slides. The old <Hero /> stays in hero.tsx.
 export function SpecimenHero() {
   return (
     <LycorisSpecimen
@@ -14,13 +14,6 @@ export function SpecimenHero() {
       year="2026"
       description="Heavyweight tees, loud prints, and a design tool for the ones you make yourself."
       specs={["Oversized & regular fits", "Custom prints, designed by you", `Free delivery over ₹${BRAND.freeShippingThresholdPaise / 100}`, "Made in India"]}
-      tagline={[{ text: "Wear" }, { text: "what you", small: true }, { text: "mean." }, { text: BRAND.name, small: true }]}
-      multilingual="Wear·what·you·mean"
-      ligatureWord="Offbeat"
-      links={[
-        { label: "SHOP NEW DROPS →", href: "/collections/new-drops" },
-        { label: "DESIGN YOUR OWN →", href: "/customize" },
-      ]}
       fontFamily={`${federant.style.fontFamily}, Georgia, serif`}
       fontHref={null}
       ink="#0A0A0A"
@@ -29,7 +22,7 @@ export function SpecimenHero() {
       // Pin below the sticky 64px header (+1px border) instead of sliding under it.
       top="65px"
       height="calc(100svh - 65px)"
-      sceneScroll={0.9}
+      sceneScroll={0}
     />
   );
 }

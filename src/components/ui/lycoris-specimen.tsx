@@ -53,7 +53,7 @@ export type LycorisSpecimenProps = {
   height?: string
   /** Where the sticky stage pins, e.g. the height of a sticky site header. */
   top?: string
-  /** Stage-heights of scroll per frame. */
+  /** Stage-heights of scroll per frame. 0 = cover only: one screen, no scroll frames, no frame nav. */
   sceneScroll?: number
   /** Florets in the umbel, 3–8. */
   florets?: number
@@ -1357,7 +1357,7 @@ export default function LycorisSpecimen({
         </div>
 
         {/* ================================== nav ================================== */}
-        <nav
+        {sceneScroll > 0 && <nav
           aria-label="Specimen frames"
           className="lys-nav lys-hide-sm absolute flex flex-col items-end"
           style={{ ...sans, right: "2cqw", top: "50%", transform: "translateY(-50%)", fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase" }}
@@ -1368,7 +1368,7 @@ export default function LycorisSpecimen({
               <span className="lys-tick" />
             </button>
           ))}
-        </nav>
+        </nav>}
 
         {/* grain, static — the board is printed, not rendered */}
         <svg aria-hidden className="pointer-events-none absolute inset-0" width="100%" height="100%" style={{ opacity: 0.09, mixBlendMode: "screen" }}>
