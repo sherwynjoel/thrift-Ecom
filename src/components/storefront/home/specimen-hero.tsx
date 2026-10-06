@@ -19,9 +19,9 @@ export function SpecimenHero() {
       ink="#0A0A0A"
       bone="#F5F5F0"
       crimson="#D4FF3F"
-      // Pin below the sticky 64px header (+1px border) instead of sliding under it.
+      // Three quarters of the screen, so the next section peeks in below. Pinned under the 65px sticky header.
       top="65px"
-      height="calc(100svh - 65px)"
+      height="75svh"
       sceneScroll={0}
     />
   );
