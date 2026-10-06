@@ -9,11 +9,11 @@ web
 ## Users
 
 - **Primary:** college students and young adults in India (roughly 18–28) who shop on their phones, follow streetwear and pop-culture drops, and compare against Veirdo, The Souled Store and Bewakoof. Their job: find or make a tee that says something about them, check fit and price quickly, and pay without friction.
-- **Operators:** the tbox owner and a very small team running the store from the admin panel, often from a phone: packing and shipping orders, printing custom designs in-house, managing stock, promotions and reviews.
+- **Operators:** the tebox owner and a very small team running the store from the admin panel, often from a phone: packing and shipping orders, printing custom designs in-house, managing stock, promotions and reviews.
 
 ## Product Purpose
 
-tbox is an Indian online T-shirt store. It sells its own streetwear tees and lets customers design their own tee (upload artwork, add text, front and back) and see it on the shirt before buying. Every order, ready-made or custom, is printed and shipped by tbox itself. Success means customers buy from a phone in a few taps, custom orders arrive looking exactly like the preview, and the small team can run fulfilment with as little manual work as possible.
+tebox is an Indian online T-shirt store. It sells its own streetwear tees and lets customers design their own tee (upload artwork, add text, front and back) and see it on the shirt before buying. Every order, ready-made or custom, is printed and shipped by tebox itself. Success means customers buy from a phone in a few taps, custom orders arrive looking exactly like the preview, and the small team can run fulfilment with as little manual work as possible.
 
 ## Positioning
 
@@ -36,7 +36,7 @@ The combination competitors don't offer together: a design-your-own-tee studio, 
 
 ## Brand Commitments
 
-- Name: **tbox** (lowercase, as given by the owner).
+- Name: **tebox** (lowercase, as given by the owner). Domain: tebox.in.
 - Voice: bold and playful — short, confident, a bit cheeky, streetwear energy; Hinglish is fine.
 - Tagline currently in code: "Wear what you mean." (not yet confirmed as final).
 - No logo yet.

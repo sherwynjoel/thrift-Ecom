@@ -1,24 +1,26 @@
-// tbox logo geometry, drawn on a 286 × 100 grid (22-unit strokes, x-height 30→100).
-// Letters use the default nonzero fill (overlapping strokes merge; the b counter is wound the other way so it cuts out).
+// tebox logo geometry, drawn on a 364 × 100 grid (22-unit strokes, x-height 30→100).
+// Letters use the default nonzero fill (overlapping strokes merge; the e and b counters are wound the other way so they cut out).
 // The "o" is a square box in the brand lime; every other letter uses the ink colour.
-export const LOGO_VIEWBOX = "0 0 286 100";
-export const LOGO_ASPECT = 286 / 100;
+export const LOGO_VIEWBOX = "0 0 364 100";
+export const LOGO_ASPECT = 364 / 100;
 
 /** Each ink letter on its own, so the splash screen can animate them one by one. */
 export const LOGO_LETTER_PATHS = {
   // t: stem with a curved foot + crossbar
   t: "M10 10H32V70A8 8 0 0 0 40 78H44V100H34A24 24 0 0 1 10 76ZM0 30H44V52H0Z",
+  // e: the b's rounded bowl with a crossbar and an open lower right; the eye is wound the other way so it cuts out
+  e: "M76 30H98A24 24 0 0 1 122 54V72H74V82H104V100H76A24 24 0 0 1 52 76V54A24 24 0 0 1 76 30ZM74 52V62H100V52Z",
   // b: stem + rounded bowl (counter wound the other way so it cuts out)
-  b: "M52 0H74V100H52ZM76 30H98A24 24 0 0 1 122 54V76A24 24 0 0 1 98 100H76A24 24 0 0 1 52 76V54A24 24 0 0 1 76 30ZM74 52V78H98A2 2 0 0 0 100 76V54A2 2 0 0 0 98 52Z",
+  b: "M130 0H152V100H130ZM154 30H176A24 24 0 0 1 200 54V76A24 24 0 0 1 176 100H154A24 24 0 0 1 130 76V54A24 24 0 0 1 154 30ZM152 52V78H176A2 2 0 0 0 178 76V54A2 2 0 0 0 176 52Z",
   // x: two crossing diagonals
-  x: "M216 30H242L286 100H260ZM260 30H286L242 100H216Z",
+  x: "M294 30H320L364 100H338ZM338 30H364L320 100H294Z",
 } as const;
 
-/** t, b and x — rendered in the current text colour. */
-export const LOGO_INK_PATH = LOGO_LETTER_PATHS.t + LOGO_LETTER_PATHS.b + LOGO_LETTER_PATHS.x;
+/** t, e, b and x — rendered in the current text colour. */
+export const LOGO_INK_PATH = LOGO_LETTER_PATHS.t + LOGO_LETTER_PATHS.e + LOGO_LETTER_PATHS.b + LOGO_LETTER_PATHS.x;
 
 /** The box "o" — rendered in the brand lime. */
-export const LOGO_BOX_PATH = "M134 30H204V100H134ZM156 52V78H182V52Z";
+export const LOGO_BOX_PATH = "M212 30H282V100H212ZM234 52V78H260V52Z";
 
 /** App-icon geometry on a 100 × 100 grid: a lime rounded square carrying a black lowercase t. */
 export const ICON_VIEWBOX = "0 0 100 100";
