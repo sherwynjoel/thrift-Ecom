@@ -7,7 +7,9 @@ export const authConfig = {
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   providers: googleEnabled
-    ? [Google({ clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET, allowDangerousEmailAccountLinking: true })]
+    // No automatic linking to an existing password account: sign-up never verifies email, so whoever registered an
+    // address first would keep a password into the real owner's account. That case lands on /login?error=OAuthAccountNotLinked.
+    ? [Google({ clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET })]
     : [],
   callbacks: {
     signIn({ account, profile }) {
