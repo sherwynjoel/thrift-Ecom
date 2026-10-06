@@ -19,9 +19,9 @@ export function SpecimenHero() {
       ink="#0A0A0A"
       bone="#F5F5F0"
       crimson="#D4FF3F"
-      // Three quarters of the screen, so the next section peeks in below. Pinned under the 65px sticky header.
+      // 60% of the screen, so the next section shows below. Pinned under the 65px sticky header.
       top="65px"
-      height="75svh"
+      height="60svh"
       sceneScroll={0}
     />
   );
