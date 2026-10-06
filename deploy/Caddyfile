@@ -39,8 +39,3 @@
 www.{$DOMAIN} {
 	redir https://{$DOMAIN}{uri} permanent
 }
-
-# www.<domain> is an alias: one permanent redirect to the bare domain (Caddy gets its certificate too).
-www.{$DOMAIN} {
-	redir https://{$DOMAIN}{uri} permanent
-}
