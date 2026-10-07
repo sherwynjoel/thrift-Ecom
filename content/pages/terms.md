@@ -49,7 +49,7 @@ We may update these terms. The version on this page when you place an order appl
 
 ## Governing law
 
-These terms are governed by the laws of India. Any dispute is subject to the courts at our place of business.
+These terms are governed by the laws of India. Any dispute is subject to the exclusive jurisdiction of the courts in Coimbatore, Tamil Nadu.
 
 ## Contact
 
