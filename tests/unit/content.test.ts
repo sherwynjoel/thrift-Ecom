@@ -4,7 +4,7 @@ import { readPage } from "@/server/content";
 describe("readPage", () => {
   it("reads a markdown page and splits the title", async () => {
     const page = await readPage("shipping");
-    expect(page?.title).toBe("Shipping");
+    expect(page?.title).toBe("Shipping & Delivery Policy");
     expect(page?.body).toContain("prepaid");
   });
 

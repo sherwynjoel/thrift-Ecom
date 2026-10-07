@@ -12,13 +12,13 @@ export const FOOTER_LINKS = {
     { label: "Customize", href: "/customize" },
   ],
   help: [
-    { label: "Shipping", href: "/pages/shipping" },
-    { label: "Returns & Exchange", href: "/pages/returns" },
-    { label: "Contact", href: "/pages/contact" },
+    { label: "Shipping Policy", href: "/pages/shipping" },
+    { label: "Refunds & Cancellation", href: "/pages/returns" },
+    { label: "Contact Us", href: "/pages/contact" },
   ],
   company: [
     { label: "About", href: "/pages/about" },
-    { label: "Privacy", href: "/pages/privacy" },
-    { label: "Terms", href: "/pages/terms" },
+    { label: "Privacy Policy", href: "/pages/privacy" },
+    { label: "Terms & Conditions", href: "/pages/terms" },
   ],
 } as const;

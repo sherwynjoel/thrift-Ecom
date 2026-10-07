@@ -1,6 +1,10 @@
-# Contact
+# Contact Us
 
 Questions about an order, a print, or a bulk run for your college fest? Write to us and a human replies within one working day.
 
-- Email: tboxcbe@gmail.com
-- Hours: Monday to Saturday, 10am to 7pm IST
+- **Business:** tebox
+- **Email:** tboxcbe@gmail.com
+- **Website:** https://tebox.in
+- **Hours:** Monday to Saturday, 10am to 7pm IST
+
+For order questions, include your order number so we can help faster.
